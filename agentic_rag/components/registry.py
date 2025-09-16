@@ -203,7 +203,7 @@ class ComponentRegistry:
             ComponentSpec(
                 name="document_writer",
                 component_type=ComponentType.WRITER,
-                haystack_class="haystack.components.writers.DocumentWriter",
+                haystack_class="haystack_integrations.writers.chroma.ChromaDocumentWriter",
                 input_types=[DataType.LIST_DOCUMENT],
                 output_types=[
                     DataType.DICT
