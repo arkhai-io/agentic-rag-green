@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
-from .data_types import ComponentType, DataType
+from .data_types import ComponentType, DataType, PipelineUsage
 
 
 @dataclass
@@ -15,6 +15,7 @@ class ComponentSpec:
     haystack_class: str
     input_types: List[DataType]
     output_types: List[DataType]
+    pipeline_usage: PipelineUsage = PipelineUsage.BOTH
     default_config: Dict[str, Any] = field(default_factory=dict)
     dependencies: List[str] = field(default_factory=list)
     parallelizable: bool = True

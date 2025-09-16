@@ -2,7 +2,7 @@
 
 from typing import Dict, List, Optional
 
-from ..types import ComponentSpec, ComponentType, DataType
+from ..types import ComponentSpec, ComponentType, DataType, PipelineUsage
 
 
 class ComponentRegistry:
@@ -45,6 +45,7 @@ class ComponentRegistry:
                 haystack_class="haystack.components.converters.PyPDFToDocument",
                 input_types=[DataType.LIST_BYTE_STREAM],
                 output_types=[DataType.LIST_DOCUMENT],
+                pipeline_usage=PipelineUsage.INDEXING,
                 default_config={},
             )
         )
@@ -56,6 +57,7 @@ class ComponentRegistry:
                 haystack_class="haystack.components.converters.DOCXToDocument",
                 input_types=[DataType.LIST_BYTE_STREAM],
                 output_types=[DataType.LIST_DOCUMENT],
+                pipeline_usage=PipelineUsage.INDEXING,
                 default_config={},
             )
         )
@@ -67,6 +69,7 @@ class ComponentRegistry:
                 haystack_class="haystack.components.converters.MarkdownToDocument",
                 input_types=[DataType.LIST_BYTE_STREAM],
                 output_types=[DataType.LIST_DOCUMENT],
+                pipeline_usage=PipelineUsage.INDEXING,
                 default_config={},
             )
         )
@@ -78,6 +81,7 @@ class ComponentRegistry:
                 haystack_class="haystack.components.converters.HTMLToDocument",
                 input_types=[DataType.LIST_BYTE_STREAM],
                 output_types=[DataType.LIST_DOCUMENT],
+                pipeline_usage=PipelineUsage.INDEXING,
                 default_config={},
             )
         )
@@ -89,6 +93,7 @@ class ComponentRegistry:
                 haystack_class="haystack.components.converters.TextFileToDocument",
                 input_types=[DataType.LIST_BYTE_STREAM],
                 output_types=[DataType.LIST_DOCUMENT],
+                pipeline_usage=PipelineUsage.INDEXING,
                 default_config={},
             )
         )
@@ -101,6 +106,7 @@ class ComponentRegistry:
                 haystack_class="haystack.components.preprocessors.DocumentSplitter",
                 input_types=[DataType.LIST_DOCUMENT],
                 output_types=[DataType.LIST_DOCUMENT],
+                pipeline_usage=PipelineUsage.INDEXING,
                 default_config={"split_by": "sentence", "split_length": 512},
             )
         )
@@ -113,6 +119,7 @@ class ComponentRegistry:
                 haystack_class="agentic_rag.components.chunkers.MarkdownAwareChunker",
                 input_types=[DataType.LIST_DOCUMENT],
                 output_types=[DataType.LIST_DOCUMENT],
+                pipeline_usage=PipelineUsage.INDEXING,
                 default_config={"chunk_size": 1000, "chunk_overlap": 100},
             )
         )
@@ -125,6 +132,7 @@ class ComponentRegistry:
                 haystack_class="haystack.components.embedders.SentenceTransformersTextEmbedder",
                 input_types=[DataType.LIST_STRING],
                 output_types=[DataType.LIST_LIST_FLOAT],
+                pipeline_usage=PipelineUsage.BOTH,
                 default_config={"model": "sentence-transformers/all-MiniLM-L6-v2"},
             )
         )
@@ -136,6 +144,7 @@ class ComponentRegistry:
                 haystack_class="haystack.components.embedders.SentenceTransformersDocumentEmbedder",
                 input_types=[DataType.LIST_DOCUMENT],
                 output_types=[DataType.LIST_DOCUMENT],  # Documents with embeddings
+                pipeline_usage=PipelineUsage.BOTH,
                 default_config={"model": "sentence-transformers/all-MiniLM-L6-v2"},
             )
         )
@@ -152,6 +161,7 @@ class ComponentRegistry:
                 haystack_class="haystack_integrations.retrievers.chroma.ChromaEmbeddingRetriever",
                 input_types=[DataType.LIST_FLOAT],
                 output_types=[DataType.LIST_DOCUMENT],
+                pipeline_usage=PipelineUsage.RETRIEVAL,
                 dependencies=[],  # Document store will be passed during component creation
                 default_config={"top_k": 10},
             )
@@ -165,6 +175,7 @@ class ComponentRegistry:
                 haystack_class="haystack.components.generators.OpenAIGenerator",
                 input_types=[DataType.LIST_DOCUMENT, DataType.STRING],
                 output_types=[DataType.STRING],
+                pipeline_usage=PipelineUsage.RETRIEVAL,
                 dependencies=[],  # Retriever will be connected via pipeline
                 default_config={"model": "gpt-3.5-turbo"},
                 parallelizable=False,

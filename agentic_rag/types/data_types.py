@@ -43,9 +43,18 @@ class ComponentType(Enum):
 
     # Retrieval
     RETRIEVER = "retriever"
+    RERANKER = "reranker"
 
     # Generation
     GENERATOR = "generator"
+
+
+class PipelineUsage(Enum):
+    """Usage types for pipeline components."""
+
+    INDEXING = "indexing"  # Used when adding/processing documents
+    RETRIEVAL = "retrieval"  # Used when querying/retrieving documents
+    BOTH = "both"  # Used in both indexing and retrieval operations
 
 
 # Type aliases
