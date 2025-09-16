@@ -53,30 +53,91 @@ class PipelineRunner:
         """
         self._active_pipeline = (spec, haystack_pipeline)
 
-    def run(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def run(self, pipeline_type: str, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """
         Run the active pipeline with the given inputs.
 
         Args:
+            pipeline_type: Type of pipeline execution ("indexing" or "retrieval")
             inputs: Input data for the pipeline
-                Example: {"converter": {"sources": [ByteStream(...)]}}
+                For indexing: {"documents": [Document(...), ...]}
+                For retrieval: {"query": "search query", "top_k": 5}
 
         Returns:
             Pipeline execution results
 
         Raises:
             RuntimeError: If no pipeline is loaded
-            ValueError: If inputs are invalid
+            ValueError: If inputs are invalid or pipeline type unsupported
         """
         if self._active_pipeline is None:
             raise RuntimeError("No pipeline loaded. Call load_pipeline() first.")
 
         spec, haystack_pipeline = self._active_pipeline
 
-        # TODO: Implement pipeline execution logic
-        # This will involve:
-        # 1. Validate inputs against pipeline requirements
-        # 2. Execute the Haystack pipeline
-        # 3. Handle errors and return results
+        if pipeline_type == "indexing":
+            return self._run_indexing_pipeline(spec, haystack_pipeline, inputs)
+        elif pipeline_type == "retrieval":
+            return self._run_retrieval_pipeline(spec, haystack_pipeline, inputs)
+        else:
+            raise ValueError(
+                f"Unsupported pipeline type: {pipeline_type}. Use 'indexing' or 'retrieval'"
+            )
 
-        raise NotImplementedError("Pipeline execution not yet implemented")
+    def _run_indexing_pipeline(
+        self, spec: PipelineSpec, haystack_pipeline: Any, inputs: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Run an indexing pipeline to process and store documents.
+
+        Args:
+            spec: Pipeline specification
+            haystack_pipeline: Haystack pipeline instance
+            inputs: Input data with documents or file paths
+
+        Returns:
+            Results from the indexing pipeline
+        """
+        try:
+            # Handle direct document input only
+            if "documents" not in inputs:
+                raise ValueError(
+                    "Indexing inputs must contain 'documents' key with list of Document objects"
+                )
+
+            documents = inputs["documents"]
+            if not isinstance(documents, list):
+                raise ValueError("'documents' must be a list of Document objects")
+
+            # Map documents to the first component in the pipeline
+            pipeline_inputs = {spec.components[0].name: {"documents": documents}}
+
+            # Execute the pipeline
+            results = haystack_pipeline.run(pipeline_inputs)
+
+            return {
+                "success": True,
+                "results": results,
+                "processed_count": len(documents),
+            }
+
+        except Exception as e:
+            return {"success": False, "error": str(e), "error_type": type(e).__name__}
+
+    def _run_retrieval_pipeline(
+        self, spec: PipelineSpec, haystack_pipeline: Any, inputs: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Run a retrieval pipeline to search for relevant documents.
+
+        Args:
+            spec: Pipeline specification
+            haystack_pipeline: Haystack pipeline instance
+            inputs: Input data with query and search parameters
+
+        Returns:
+            Results from the retrieval pipeline
+        """
+        # TODO: Implement retrieval pipeline execution
+        # This will handle query embedding and document retrieval
+        raise NotImplementedError("Retrieval pipeline execution not yet implemented")

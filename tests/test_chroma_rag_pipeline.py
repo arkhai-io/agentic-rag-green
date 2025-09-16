@@ -213,7 +213,7 @@ class TestChromaRAGPipeline:
         chroma_spec = ComponentSpec(
             name="test_chroma_retriever",
             component_type=ComponentType.RETRIEVER,
-            haystack_class="haystack_integrations.retrievers.chroma.ChromaEmbeddingRetriever",
+            haystack_class="haystack_integrations.components.retrievers.chroma.ChromaEmbeddingRetriever",
             input_types=[DataType.LIST_FLOAT],
             output_types=[DataType.LIST_DOCUMENT],
             pipeline_usage=PipelineUsage.RETRIEVAL,

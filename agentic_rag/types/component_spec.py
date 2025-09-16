@@ -52,9 +52,10 @@ def create_haystack_component(spec: ComponentSpec, config: Dict[str, Any]) -> An
     # Special handling for Chroma components - inject document store
     if (
         "ChromaEmbeddingRetriever" in spec.haystack_class
-        or "ChromaDocumentWriter" in spec.haystack_class
+        or "DocumentWriter" in spec.haystack_class
     ):
         # Get root directory from config or use current directory
+        merged_config.pop("model", None)
         root_dir = merged_config.pop("root_dir", ".")
         document_store = _create_chroma_document_store(root_dir)
         merged_config["document_store"] = document_store
