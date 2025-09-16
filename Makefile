@@ -11,17 +11,17 @@ install-pre-commit: ## Install pre-commit hooks
 	pre-commit install
 
 format: ## Format code with black and isort
-	black agentic_rag tests
-	isort agentic_rag tests
+	poetry run black agentic_rag tests
+	poetry run isort agentic_rag tests
 
 lint: ## Run linting with flake8
-	flake8 agentic_rag tests
+	poetry run flake8 agentic_rag tests
 
 type-check: ## Run type checking with mypy
-	mypy agentic_rag
+	poetry run mypy agentic_rag
 
 test: ## Run tests with pytest
-	pytest
+	poetry run pytest
 
 check-all: format lint type-check test ## Run all checks (format, lint, type-check, test)
 

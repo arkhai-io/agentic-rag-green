@@ -6,7 +6,13 @@ extend-ignore =
     # W503: line break before binary operator (conflicts with black)
     W503,
     # E501: line too long (handled by black)
-    E501
+    E501,
+    # E302: expected 2 blank lines, found 1
+    E302,
+    # E305: expected 2 blank lines after class or function definition, found 1
+    E305,
+    # W293: blank line contains whitespace
+    W293
 exclude =
     .git,
     __pycache__,

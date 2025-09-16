@@ -8,6 +8,17 @@ authors = [
 # readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "haystack-ai>=2.0.0",
+    # Required for PDF conversion
+    "pypdf>=3.0.0",
+    # Required for document splitting/chunking
+    "nltk>=3.9.1",
+    # Required for embeddings
+    "sentence-transformers>=2.0.0",
+    # Required for Chroma document store
+    "chroma-haystack>=0.16.0",
+    # Required for OpenAI components
+    "openai>=1.0.0",
 ]
 
 [project.optional-dependencies]
