@@ -39,6 +39,12 @@ class GENERATOR(Enum):
     OPENAI = "generator"
 
 
+class WRITER(Enum):
+    """Document writing/indexing components."""
+
+    DOCUMENT_WRITER = "document_writer"
+
+
 class DOCUMENT_STORE(Enum):
     """Document storage components."""
 
@@ -47,7 +53,7 @@ class DOCUMENT_STORE(Enum):
 
 # Union type for all component enums
 ComponentEnum = Union[
-    CONVERTER, CHUNKER, EMBEDDER, DOCUMENT_STORE, RETRIEVER, GENERATOR
+    CONVERTER, CHUNKER, EMBEDDER, DOCUMENT_STORE, RETRIEVER, GENERATOR, WRITER
 ]
 
 
@@ -59,6 +65,7 @@ COMPONENT_ENUM_MAP: Dict[str, Type[Enum]] = {
     "DOCUMENT_STORE": DOCUMENT_STORE,
     "RETRIEVER": RETRIEVER,
     "GENERATOR": GENERATOR,
+    "WRITER": WRITER,
 }
 
 # Reverse mapping from component values to enum classes

@@ -40,6 +40,7 @@ class ComponentType(Enum):
 
     # Storage
     DOCUMENT_STORE = "document_store"
+    WRITER = "writer"
 
     # Retrieval
     RETRIEVER = "retriever"

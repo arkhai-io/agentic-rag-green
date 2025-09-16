@@ -148,7 +148,7 @@ class ComponentRegistry:
                 haystack_class="haystack.components.embedders.SentenceTransformersTextEmbedder",
                 input_types=[DataType.LIST_STRING],
                 output_types=[DataType.LIST_LIST_FLOAT],
-                pipeline_usage=PipelineUsage.BOTH,
+                pipeline_usage=PipelineUsage.RETRIEVAL,
                 default_config={"model": "sentence-transformers/all-MiniLM-L6-v2"},
             )
         )
@@ -160,7 +160,7 @@ class ComponentRegistry:
                 haystack_class="haystack.components.embedders.SentenceTransformersDocumentEmbedder",
                 input_types=[DataType.LIST_DOCUMENT],
                 output_types=[DataType.LIST_DOCUMENT],  # Documents with embeddings
-                pipeline_usage=PipelineUsage.BOTH,
+                pipeline_usage=PipelineUsage.INDEXING,
                 default_config={"model": "sentence-transformers/all-MiniLM-L6-v2"},
             )
         )
@@ -195,6 +195,23 @@ class ComponentRegistry:
                 dependencies=[],  # Retriever will be connected via pipeline
                 default_config={"model": "gpt-3.5-turbo"},
                 parallelizable=False,
+            )
+        )
+
+        # Writers - Document indexing components
+        self.register_component(
+            ComponentSpec(
+                name="document_writer",
+                component_type=ComponentType.WRITER,
+                haystack_class="haystack.components.writers.DocumentWriter",
+                input_types=[DataType.LIST_DOCUMENT],
+                output_types=[
+                    DataType.DICT
+                ],  # Returns metadata about written documents
+                pipeline_usage=PipelineUsage.INDEXING,
+                dependencies=[],  # Document store will be passed during component creation
+                default_config={},
+                parallelizable=True,
             )
         )
 

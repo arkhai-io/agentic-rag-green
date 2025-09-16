@@ -7,6 +7,7 @@ from .component_enums import (
     EMBEDDER,
     GENERATOR,
     RETRIEVER,
+    WRITER,
     ComponentEnum,
     get_component_value,
     list_available_components,
@@ -31,6 +32,7 @@ __all__ = [
     "DOCUMENT_STORE",
     "RETRIEVER",
     "GENERATOR",
+    "WRITER",
     "ComponentEnum",
     # Utility functions
     "parse_component_spec",
