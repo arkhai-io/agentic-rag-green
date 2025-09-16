@@ -22,7 +22,7 @@ jobs:
       uses: snok/install-poetry@v1
 
     - name: Install dependencies
-      run: poetry install --with dev
+      run: poetry install --extras dev
 
     - name: Run pre-commit hooks
       run: poetry run pre-commit run --all-files
