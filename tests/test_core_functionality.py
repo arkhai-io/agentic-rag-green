@@ -27,6 +27,9 @@ class TestCoreFunctionality:
         assert "PDF" in available["CONVERTER"]
         assert "CHROMA_EMBEDDING" in available["RETRIEVER"]
 
+        # Check custom components
+        assert "MARKDOWN_AWARE" in available["CHUNKER"]
+
     def test_factory_creation(self) -> None:
         """Test that factory can be created."""
         factory = PipelineFactory()
@@ -41,6 +44,7 @@ class TestCoreFunctionality:
         test_cases = [
             ({"type": "CONVERTER.PDF"}, "pdf_converter"),
             ({"type": "CHUNKER.DOCUMENT_SPLITTER"}, "chunker"),
+            ({"type": "CHUNKER.MARKDOWN_AWARE"}, "markdown_aware_chunker"),
             ({"type": "EMBEDDER.SENTENCE_TRANSFORMERS"}, "embedder"),
             ({"type": "RETRIEVER.CHROMA_EMBEDDING"}, "chroma_embedding_retriever"),
             ({"type": "GENERATOR.OPENAI"}, "generator"),
@@ -58,6 +62,7 @@ class TestCoreFunctionality:
         test_components = [
             "pdf_converter",
             "chunker",
+            "markdown_aware_chunker",
             "embedder",
             "chroma_embedding_retriever",
             "generator",

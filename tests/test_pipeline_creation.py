@@ -25,6 +25,7 @@ class TestPipelineCreation:
         assert "TEXT" in available["CONVERTER"]
 
         assert "DOCUMENT_SPLITTER" in available["CHUNKER"]
+        assert "MARKDOWN_AWARE" in available["CHUNKER"]
 
         assert "SENTENCE_TRANSFORMERS" in available["EMBEDDER"]
         assert "SENTENCE_TRANSFORMERS_DOC" in available["EMBEDDER"]

@@ -105,6 +105,18 @@ class ComponentRegistry:
             )
         )
 
+        # Custom Chunkers
+        self.register_component(
+            ComponentSpec(
+                name="markdown_aware_chunker",
+                component_type=ComponentType.CHUNKER,
+                haystack_class="agentic_rag.components.chunkers.MarkdownAwareChunker",
+                input_types=[DataType.LIST_DOCUMENT],
+                output_types=[DataType.LIST_DOCUMENT],
+                default_config={"chunk_size": 1000, "chunk_overlap": 100},
+            )
+        )
+
         # Embedders - Only verified existing ones
         self.register_component(
             ComponentSpec(

@@ -16,6 +16,7 @@ class CHUNKER(Enum):
     """Document chunking/splitting components."""
 
     DOCUMENT_SPLITTER = "chunker"
+    MARKDOWN_AWARE = "markdown_aware_chunker"
 
 
 class EMBEDDER(Enum):
