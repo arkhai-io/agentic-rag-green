@@ -124,6 +124,22 @@ class ComponentRegistry:
             )
         )
 
+        self.register_component(
+            ComponentSpec(
+                name="semantic_chunker",
+                component_type=ComponentType.CHUNKER,
+                haystack_class="agentic_rag.components.chunkers.SemanticChunker",
+                input_types=[DataType.LIST_DOCUMENT],
+                output_types=[DataType.LIST_DOCUMENT],
+                pipeline_usage=PipelineUsage.INDEXING,
+                default_config={
+                    "min_chunk_size": 200,
+                    "max_chunk_size": 1000,
+                    "overlap_size": 50,
+                },
+            )
+        )
+
         # Embedders - Only verified existing ones
         self.register_component(
             ComponentSpec(

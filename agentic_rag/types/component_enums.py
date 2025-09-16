@@ -17,6 +17,7 @@ class CHUNKER(Enum):
 
     DOCUMENT_SPLITTER = "chunker"
     MARKDOWN_AWARE = "markdown_aware_chunker"
+    SEMANTIC = "semantic_chunker"
 
 
 class EMBEDDER(Enum):

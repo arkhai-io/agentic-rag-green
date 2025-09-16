@@ -36,22 +36,20 @@ class TestCustomComponentsPipeline:
         # Create test document with markdown content
         markdown_content = """# Main Title
 
-This is some content under the main title.
-It has multiple paragraphs.
+This is some content under the main title that is long enough to exceed the chunk size limit. It has multiple paragraphs and enough text to force splitting.
 
 ## Subtitle
 
-More content under the subtitle.
-This should be chunked appropriately.
+More content under the subtitle that should be chunked appropriately. This section also has enough content to warrant its own chunk when we set a small chunk size.
 
 ### Sub-subtitle
 
-Final content section."""
+Final content section with additional text to make sure we have enough content to trigger the chunking algorithm properly."""
 
         document = Document(content=markdown_content, meta={"source": "test.md"})
 
-        # Create chunker instance
-        chunker = MarkdownAwareChunker(chunk_size=100)
+        # Create chunker instance with smaller chunk size to force splitting
+        chunker = MarkdownAwareChunker(chunk_size=120, chunk_overlap=20)
 
         # Run chunking
         result = chunker.run(documents=[document])
