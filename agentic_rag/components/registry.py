@@ -98,6 +98,22 @@ class ComponentRegistry:
             )
         )
 
+        self.register_component(
+            ComponentSpec(
+                name="marker_pdf_converter",
+                component_type=ComponentType.CONVERTER,
+                haystack_class="agentic_rag.components.converters.MarkerPDFToDocument",
+                input_types=[DataType.LIST_BYTE_STREAM],
+                output_types=[DataType.LIST_DOCUMENT],
+                pipeline_usage=PipelineUsage.INDEXING,
+                default_config={
+                    "languages": "en",
+                    "output_format": "markdown",
+                    "store_full_path": False,
+                },
+            )
+        )
+
         # Chunkers/Splitters - Only verified existing ones
         self.register_component(
             ComponentSpec(

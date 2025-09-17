@@ -6,7 +6,7 @@ authors = [
     {name = "Vardhan Shorewala",email = "vardhanshorewala@berkeley.edu"}
 ]
 # readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<4.0"
 dependencies = [
     "haystack-ai>=2.0.0",
     # Required for PDF conversion
@@ -19,6 +19,8 @@ dependencies = [
     "chroma-haystack>=0.16.0",
     # Required for OpenAI components
     "openai>=1.0.0",
+    # Required for Marker PDF conversion
+    "marker-pdf>=1.9.3",
 ]
 
 [project.optional-dependencies]

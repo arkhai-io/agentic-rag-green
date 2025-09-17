@@ -8,8 +8,11 @@ class CONVERTER(Enum):
     """Document converter components."""
 
     PDF = "pdf_converter"
+    DOCX = "docx_converter"
+    MARKDOWN = "markdown_converter"
     HTML = "html_converter"
     TEXT = "text_converter"
+    MARKER_PDF = "marker_pdf_converter"
 
 
 class CHUNKER(Enum):
