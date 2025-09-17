@@ -1,7 +1,6 @@
 """Integration tests for PipelineRunner with real component execution."""
 
 import os
-import tempfile
 
 import pytest
 

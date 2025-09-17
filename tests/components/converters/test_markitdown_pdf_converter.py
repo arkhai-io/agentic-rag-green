@@ -201,7 +201,7 @@ class TestMarkItDownPDFToDocument:
             print(f"✅ Successful conversion test passed")
             print(f"📄 Extracted {len(document.content)} characters")
             print(f"🏷️  Metadata: {document.meta}")
-            print(f"📝 Converted Markdown Content:")
+            print("📝 Converted Markdown Content:")
             print("=" * 50)
             print(document.content)
             print("=" * 50)
@@ -236,7 +236,7 @@ class TestMarkItDownPDFToDocument:
             assert document.meta["converter"] == "markitdown"
             
             print("✅ Metadata handling test passed")
-            print(f"📝 Converted Content with Metadata:")
+            print("📝 Converted Content with Metadata:")
             print("=" * 40)
             print(document.content)
             print("=" * 40)
@@ -329,7 +329,7 @@ class TestMarkItDownPDFToDocument:
             
             print("✅ ByteStream input test passed")
             print(f"📄 Extracted {len(document.content)} characters from ByteStream")
-            print(f"📝 ByteStream Converted Content:")
+            print("📝 ByteStream Converted Content:")
             print("=" * 40)
             print(document.content)
             print("=" * 40)
@@ -426,18 +426,8 @@ class TestMarkItDownPDFToDocument:
             
             runner.load_pipeline(pipeline_spec, "markitdown_test", config)
             
-            # Convert the PDF to ByteStream for pipeline input
-            from haystack.dataclasses import ByteStream
-            pdf_bytes = pdf_path.read_bytes()
-            bytestream = ByteStream(
-                data=pdf_bytes,
-                meta={"file_path": str(pdf_path)}
-            )
-            
-            # Run the pipeline
-            from haystack import Document
-            # For this test, we'll create a Document with the ByteStream as source
             # Note: This is a simplified test - in real usage, you'd handle file loading differently
+            # For now, just verify the pipeline can be created with MarkItDown converter
             
             print("✅ Pipeline integration test setup completed")
             print("📝 Note: Full pipeline integration requires file loading components")

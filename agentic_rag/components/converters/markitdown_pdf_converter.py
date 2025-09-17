@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from markitdown import MarkItDown
+
 from haystack import Document, component, default_from_dict, default_to_dict
 from haystack.components.converters.utils import get_bytestream_from_source, normalize_metadata
 from haystack.dataclasses import ByteStream
@@ -46,7 +48,7 @@ class MarkItDownPDFToDocument:
             If False, only the file name is stored.
         """
         self.store_full_path = store_full_path
-        self._markitdown_instance = None
+        self._markitdown_instance: Optional["MarkItDown"] = None
 
     def to_dict(self) -> dict[str, Any]:
         """
@@ -55,7 +57,7 @@ class MarkItDownPDFToDocument:
         :returns:
             Dictionary with serialized data.
         """
-        return default_to_dict(  # type: ignore[no-any-return]
+        return default_to_dict(
             self,
             store_full_path=self.store_full_path,
         )
@@ -71,7 +73,7 @@ class MarkItDownPDFToDocument:
         :returns:
             Deserialized component.
         """
-        return default_from_dict(cls, data)  # type: ignore[no-any-return]
+        return default_from_dict(cls, data)
 
     def _initialize_markitdown(self) -> None:
         """Initialize MarkItDown instance if not already initialized."""
@@ -107,10 +109,13 @@ class MarkItDownPDFToDocument:
 
         try:
             logger.info(f"Converting {file_path} using MarkItDown")
+            if self._markitdown_instance is None:
+                raise RuntimeError("MarkItDown instance not initialized")
+            
             result = self._markitdown_instance.convert(str(file_path))
             
             if result and hasattr(result, 'text_content'):
-                content = result.text_content.strip()
+                content: str = result.text_content.strip()
                 if content:
                     return content
                 else:

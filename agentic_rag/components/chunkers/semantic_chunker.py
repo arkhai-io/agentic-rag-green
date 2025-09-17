@@ -44,7 +44,7 @@ class SemanticChunker:
         self.max_chunk_size = max_chunk_size
         self.overlap_size = overlap_size
 
-    @component.output_types(documents=List[Document])  # type: ignore[misc]
+    @component.output_types(documents=List[Document])
     def run(self, documents: List[Document]) -> Dict[str, List[Document]]:
         """
         Split documents into chunks at semantic boundaries.
