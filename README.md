@@ -11,13 +11,13 @@ graph TB
         PR --> IPL[Indexing Pipeline]
         PR --> RPL[Retrieval Pipeline]
     end
-    
+
     subgraph "Pipeline Factory"
         PF[PipelineFactory]
         PF --> PB[PipelineBuilder]
         PF --> CR[ComponentRegistry]
     end
-    
+
     subgraph "Components"
         CONV[Converters]
         CHUNK[Chunkers]
@@ -26,12 +26,12 @@ graph TB
         GEN[Generators]
         WRITE[Writers]
     end
-    
+
     subgraph "Data Stores"
         CHROMA[(ChromaDB)]
         FILES[📄 Documents]
     end
-    
+
     PR --> PF
     PB --> CR
     CR --> CONV
@@ -40,7 +40,7 @@ graph TB
     CR --> RETR
     CR --> GEN
     CR --> WRITE
-    
+
     WRITE --> CHROMA
     RETR --> CHROMA
     CONV --> FILES
@@ -74,7 +74,7 @@ flowchart LR
     CHUNK --> EMBED[Document Embedder]
     EMBED --> WRITE[Document Writer]
     WRITE --> DB[(ChromaDB)]
-    
+
     style DOC fill:#e1f5fe
     style DB fill:#f3e5f5
 ```
@@ -88,7 +88,7 @@ flowchart LR
     DB --> RETR
     RETR --> GEN[Generator]
     GEN --> RESP[📝 Response]
-    
+
     style QUERY fill:#e8f5e8
     style RESP fill:#fff3e0
     style DB fill:#f3e5f5
@@ -261,18 +261,18 @@ classDiagram
         -_run_indexing_pipeline()
         -_run_retrieval_pipeline()
     }
-    
+
     class PipelineFactory {
         +create_pipeline_from_spec()
         -_parse_component_spec()
     }
-    
+
     class ComponentRegistry {
         +register_component()
         +get_component_spec()
         +list_components()
     }
-    
+
     class ComponentSpec {
         +name: str
         +component_type: ComponentType
@@ -280,23 +280,23 @@ classDiagram
         +input_types: List[DataType]
         +output_types: List[DataType]
     }
-    
+
     PipelineRunner --> PipelineFactory
     PipelineFactory --> ComponentRegistry
     ComponentRegistry --> ComponentSpec
-    
+
     class MarkdownAwareChunker {
         +run(documents)
         +chunk_size: int
         +chunk_overlap: int
     }
-    
+
     class SemanticChunker {
         +run(documents)
         +min_chunk_size: int
         +max_chunk_size: int
     }
-    
+
     ComponentSpec --> MarkdownAwareChunker
     ComponentSpec --> SemanticChunker
 ```
@@ -350,7 +350,7 @@ from haystack import component, Document
 class MyCustomChunker:
     def __init__(self, chunk_size: int = 1000):
         self.chunk_size = chunk_size
-    
+
     @component.output_types(documents=List[Document])
     def run(self, documents: List[Document]) -> Dict[str, List[Document]]:
         # Your chunking logic here

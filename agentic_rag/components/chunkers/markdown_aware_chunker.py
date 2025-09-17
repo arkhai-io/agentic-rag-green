@@ -44,7 +44,7 @@ class MarkdownAwareChunker:
         self.chunk_overlap = chunk_overlap
         self.separators = separators or ["\n\n", "\n", " ", ""]
 
-    @component.output_types(documents=List[Document])
+    @component.output_types(documents=List[Document])  # type: ignore[misc]
     def run(self, documents: List[Document]) -> Dict[str, List[Document]]:
         """
         Split documents into chunks while preserving markdown structure.

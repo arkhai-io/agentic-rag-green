@@ -12,9 +12,9 @@ from haystack.components.converters.utils import (
     normalize_metadata,
 )
 from haystack.dataclasses import ByteStream
-from marker.config.parser import ConfigParser  # type: ignore[import-untyped]
-from marker.converters.pdf import PdfConverter  # type: ignore[import-untyped]
-from marker.models import create_model_dict  # type: ignore[import-untyped]
+from marker.config.parser import ConfigParser
+from marker.converters.pdf import PdfConverter
+from marker.models import create_model_dict
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ class MarkerPDFToDocument:
         :returns:
             Dictionary with serialized data.
         """
-        return default_to_dict(
+        return default_to_dict(  # type: ignore[no-any-return]
             self,
             languages=self.languages,
             output_format=self.output_format,
@@ -92,7 +92,7 @@ class MarkerPDFToDocument:
         :returns:
             Deserialized component.
         """
-        return default_from_dict(cls, data)
+        return default_from_dict(cls, data)  # type: ignore[no-any-return]
 
     def _initialize_marker(self) -> None:
         """Initialize marker models and converter if not already initialized."""
@@ -149,7 +149,7 @@ class MarkerPDFToDocument:
             logger.warning(f"Failed to convert PDF {file_path} with marker: {e}")
             return ""
 
-    @component.output_types(documents=List[Document])
+    @component.output_types(documents=List[Document])  # type: ignore[misc]
     def run(
         self,
         sources: List[Union[str, Path, ByteStream]],

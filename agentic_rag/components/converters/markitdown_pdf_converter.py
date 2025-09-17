@@ -5,11 +5,13 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from markitdown import MarkItDown
-
 from haystack import Document, component, default_from_dict, default_to_dict
-from haystack.components.converters.utils import get_bytestream_from_source, normalize_metadata
+from haystack.components.converters.utils import (
+    get_bytestream_from_source,
+    normalize_metadata,
+)
 from haystack.dataclasses import ByteStream
+from markitdown import MarkItDown
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +59,7 @@ class MarkItDownPDFToDocument:
         :returns:
             Dictionary with serialized data.
         """
-        return default_to_dict(
+        return default_to_dict(  # type: ignore[no-any-return]
             self,
             store_full_path=self.store_full_path,
         )
@@ -73,14 +75,14 @@ class MarkItDownPDFToDocument:
         :returns:
             Deserialized component.
         """
-        return default_from_dict(cls, data)
+        return default_from_dict(cls, data)  # type: ignore[no-any-return]
 
     def _initialize_markitdown(self) -> None:
         """Initialize MarkItDown instance if not already initialized."""
         if self._markitdown_instance is None:
             try:
                 from markitdown import MarkItDown
-                
+
                 logger.info("Loading MarkItDown instance...")
                 self._markitdown_instance = MarkItDown(enable_plugins=False)
                 logger.info("MarkItDown instance loaded successfully")
@@ -111,10 +113,10 @@ class MarkItDownPDFToDocument:
             logger.info(f"Converting {file_path} using MarkItDown")
             if self._markitdown_instance is None:
                 raise RuntimeError("MarkItDown instance not initialized")
-            
+
             result = self._markitdown_instance.convert(str(file_path))
-            
-            if result and hasattr(result, 'text_content'):
+
+            if result and hasattr(result, "text_content"):
                 content: str = result.text_content.strip()
                 if content:
                     return content
@@ -127,9 +129,11 @@ class MarkItDownPDFToDocument:
 
         except Exception as e:
             logger.error(f"Error converting {file_path} with MarkItDown: {e}")
-            raise RuntimeError(f"MarkItDown conversion failed for {file_path}: {e}") from e
+            raise RuntimeError(
+                f"MarkItDown conversion failed for {file_path}: {e}"
+            ) from e
 
-    @component.output_types(documents=List[Document])
+    @component.output_types(documents=List[Document])  # type: ignore[misc]
     def run(
         self,
         sources: List[Union[str, Path, ByteStream]],
@@ -148,7 +152,7 @@ class MarkItDownPDFToDocument:
             - `documents`: List of created Documents
         """
         self._initialize_markitdown()
-        
+
         documents = []
         meta_list = normalize_metadata(meta=meta, sources_count=len(sources))
 
@@ -163,10 +167,13 @@ class MarkItDownPDFToDocument:
             try:
                 # Write ByteStream data to temporary file for MarkItDown
                 import tempfile
-                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as temp_file:
+
+                with tempfile.NamedTemporaryFile(
+                    suffix=".pdf", delete=False
+                ) as temp_file:
                     temp_file.write(bytestream.data)
                     temp_file_path = Path(temp_file.name)
-                
+
                 try:
                     # Convert the temporary PDF file
                     markdown_content = self._convert_pdf_with_markitdown(temp_file_path)
@@ -175,24 +182,32 @@ class MarkItDownPDFToDocument:
                     temp_file_path.unlink(missing_ok=True)
 
             except Exception as e:
-                logger.warning(f"Could not convert {source} to Document, skipping. Error: {e}")
+                logger.warning(
+                    f"Could not convert {source} to Document, skipping. Error: {e}"
+                )
                 continue
 
             if markdown_content is None or markdown_content.strip() == "":
-                logger.warning(f"MarkItDown could not extract text from {source}. Returning an empty document.")
+                logger.warning(
+                    f"MarkItDown could not extract text from {source}. Returning an empty document."
+                )
 
             # Merge ByteStream metadata with provided metadata
             merged_metadata = {**bytestream.meta, **metadata}
 
             # Handle file path storage
-            if not self.store_full_path and (file_path := bytestream.meta.get("file_path")):
+            if not self.store_full_path and (
+                file_path := bytestream.meta.get("file_path")
+            ):
                 merged_metadata["file_path"] = os.path.basename(file_path)
-            
+
             # Add conversion method info
             merged_metadata["converter"] = "markitdown"
-            
+
             document = Document(content=markdown_content or "", meta=merged_metadata)
             documents.append(document)
 
-        logger.info(f"Successfully converted {len(documents)} PDF files using MarkItDown")
+        logger.info(
+            f"Successfully converted {len(documents)} PDF files using MarkItDown"
+        )
         return {"documents": documents}
