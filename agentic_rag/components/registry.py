@@ -114,6 +114,20 @@ class ComponentRegistry:
             )
         )
 
+        self.register_component(
+            ComponentSpec(
+                name="markitdown_pdf_converter",
+                component_type=ComponentType.CONVERTER,
+                haystack_class="agentic_rag.components.converters.markitdown_pdf_converter.MarkItDownPDFToDocument",
+                input_types=[DataType.LIST_BYTE_STREAM],
+                output_types=[DataType.LIST_DOCUMENT],
+                pipeline_usage=PipelineUsage.INDEXING,
+                default_config={
+                    "store_full_path": False,
+                },
+            )
+        )
+
         # Chunkers/Splitters - Only verified existing ones
         self.register_component(
             ComponentSpec(

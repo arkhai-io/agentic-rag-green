@@ -13,6 +13,7 @@ class CONVERTER(Enum):
     HTML = "html_converter"
     TEXT = "text_converter"
     MARKER_PDF = "marker_pdf_converter"
+    MARKITDOWN_PDF = "markitdown_pdf_converter"
 
 
 class CHUNKER(Enum):

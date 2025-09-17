@@ -21,6 +21,8 @@ dependencies = [
     "openai>=1.0.0",
     # Required for Marker PDF conversion
     "marker-pdf>=1.9.3",
+    "markitdown[pdf] (>=0.1.3,<0.2.0)",
+    "reportlab (>=4.4.3,<5.0.0)",
 ]
 
 [project.optional-dependencies]
