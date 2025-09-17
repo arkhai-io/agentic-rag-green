@@ -13,7 +13,7 @@ class TestPipelineRunnerIntegration:
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.temp_dir = tempfile.mkdtemp()
+        self.temp_dir = "/Users/vardhanshorewala/git/coophive/agentic-rag/agentic_rag/test_data"
         self.runner = PipelineRunner()
 
     def teardown_method(self):
