@@ -113,7 +113,7 @@ class PipelineRunner:
             pipeline_inputs = {spec.components[0].name: {"documents": documents}}
 
             # Execute the pipeline
-            results = haystack_pipeline.run(pipeline_inputs)
+            results = haystack_pipeline.run(data=pipeline_inputs)
 
             return {
                 "success": True,
@@ -138,6 +138,41 @@ class PipelineRunner:
         Returns:
             Results from the retrieval pipeline
         """
-        # TODO: Implement retrieval pipeline execution
-        # This will handle query embedding and document retrieval
-        raise NotImplementedError("Retrieval pipeline execution not yet implemented")
+        try:
+            # Handle query input - required for retrieval
+            if "query" not in inputs:
+                raise ValueError(
+                    "Retrieval inputs must contain 'query' key with search query string"
+                )
+
+            query = inputs["query"]
+            if not isinstance(query, str):
+                raise ValueError("'query' must be a string")
+
+            # Extract optional parameters
+            top_k = inputs.get("top_k", 10)  # Default to 10 results
+            filters = inputs.get("filters", None)
+
+            # Build pipeline inputs with all component parameters
+            # Note: SentenceTransformersTextEmbedder expects 'text' parameter, not 'query'
+            pipeline_inputs = {spec.components[0].name: {"text": query}}
+
+            # Find retriever component and add its parameters to pipeline_inputs
+            for component in spec.components:
+                if component.component_type.value == "retriever":
+                    component_params = {}
+                    if top_k is not None:
+                        component_params["top_k"] = top_k
+                    if filters is not None:
+                        component_params["filters"] = filters
+                    if component_params:
+                        pipeline_inputs[component.name] = component_params
+                    break
+
+            # Execute the pipeline
+            results = haystack_pipeline.run(data=pipeline_inputs)
+
+            return {"success": True, "results": results, "query": query}
+
+        except Exception as e:
+            return {"success": False, "error": str(e), "error_type": type(e).__name__}

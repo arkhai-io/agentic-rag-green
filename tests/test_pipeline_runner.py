@@ -213,8 +213,8 @@ class TestPipelineRunner:
         except ImportError as e:
             pytest.skip(f"Skipping due to missing dependencies: {e}")
 
-    def test_retrieval_pipeline_not_implemented(self):
-        """Test that retrieval pipeline execution is not yet implemented."""
+    def test_retrieval_pipeline_implemented(self):
+        """Test that retrieval pipeline execution works correctly."""
         runner = PipelineRunner()
 
         # Load a simple pipeline
@@ -223,12 +223,14 @@ class TestPipelineRunner:
         try:
             runner.load_pipeline(component_specs, "retrieval_test")
 
-            # Try to run retrieval - should raise NotImplementedError
-            with pytest.raises(
-                NotImplementedError,
-                match="Retrieval pipeline execution not yet implemented",
-            ):
-                runner.run("retrieval", {"query": "test query"})
+            # Try to run retrieval - should work now
+            results = runner.run("retrieval", {"query": "test query"})
+
+            # Should return results (success or failure, but not raise NotImplementedError)
+            assert isinstance(results, dict)
+            assert "success" in results
+
+            print(f"✅ Retrieval pipeline test passed! Success: {results['success']}")
 
         except ImportError as e:
             pytest.skip(f"Skipping due to missing dependencies: {e}")
