@@ -68,7 +68,7 @@ graph TB
     end
 
     subgraph "Knowledge Graph Storage"
-        DSNode[DocumentStoreNode<br/>- store_type: chroma<br/>- embedding_model: all-MiniLM-L6-v2<br/>- retrieval_components: [query_embedder, retriever]<br/>- search_type: vector]
+        DSNode[DocumentStoreNode<br/>- store_type: chroma<br/>- embedding_model: all-MiniLM-L6-v2<br/>- retrieval_components: query_embedder, retriever<br/>- search_type: vector]
     end
 
     subgraph "Retrieval Pipeline (Auto-Generated)"
