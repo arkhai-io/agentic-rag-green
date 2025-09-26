@@ -71,6 +71,7 @@ class PipelineBuilder:
         """Create graph representation of the pipeline components."""
 
         nodes = []
+        node_id_by_name = {}
         for component_spec in spec.components:
             node = ComponentNode(
                 component_name=component_spec.name,
@@ -79,7 +80,20 @@ class PipelineBuilder:
                 author="test_user",
                 component_config=component_spec.get_config(),
             )
-            nodes.append(node.to_dict())
+            node_dict = node.to_dict()
+            nodes.append(node_dict)
+            node_id_by_name[component_spec.name] = node_dict["id"]
 
         if self.graph_store is not None:
             self.graph_store.add_nodes_batch(nodes, "Component")
+            if connections:
+                edges = []
+                for source_name, target_name in connections:
+                    source_id = node_id_by_name.get(source_name)
+                    target_id = node_id_by_name.get(target_name)
+                    if source_id and target_id:
+                        edges.append((source_id, target_id, "CONNECTED_TO"))
+                if edges:
+                    self.graph_store.add_edges_batch(
+                        edges, source_label="Component", target_label="Component"
+                    )
