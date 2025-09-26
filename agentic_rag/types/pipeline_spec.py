@@ -1,7 +1,7 @@
 """Pipeline specification definitions."""
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from .component_spec import ComponentSpec
 
@@ -12,9 +12,7 @@ class PipelineSpec:
 
     name: str
     components: List[ComponentSpec]
-    component_configs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     connections: List[Tuple[str, str]] = field(default_factory=list)
-    pipeline_config: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Validate pipeline specification."""

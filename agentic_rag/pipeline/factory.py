@@ -74,7 +74,6 @@ class PipelineFactory:
 
         # Parse component specifications and validate
         component_specs_list = []
-        component_configs = {}
         for spec_item in component_specs:
             component_name = self._parse_component_spec(spec_item)
 
@@ -82,16 +81,15 @@ class PipelineFactory:
             if spec is None:
                 raise ValueError(f"Unknown component: {component_name}")
 
-            component_specs_list.append(spec)
-            # Get component-specific config if provided
-            component_configs[component_name] = config.get(component_name, {})
+            # Configure the spec directly with user config
+            user_config = config.get(component_name, {})
+            configured_spec = spec.configure(user_config)
+            component_specs_list.append(configured_spec)
 
-        # Create pipeline specification
+        # Create pipeline specification - no separate component_configs needed!
         pipeline_spec = PipelineSpec(
             name=pipeline_name,
-            components=component_specs_list,
-            component_configs=component_configs,
-            pipeline_config=config.get("pipeline", {}),
+            components=component_specs_list,  # Already configured!
         )
 
         # Build the actual Haystack pipeline

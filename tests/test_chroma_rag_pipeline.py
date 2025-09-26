@@ -98,9 +98,9 @@ class TestChromaRAGPipeline:
             assert hasattr(pipeline, "run")
 
             # Verify retriever configuration
-            retriever_config = spec.component_configs.get(
-                "chroma_embedding_retriever", {}
-            )
+            retriever_spec = spec.get_component_by_name("chroma_embedding_retriever")
+            assert retriever_spec is not None
+            retriever_config = retriever_spec.get_config()
             assert retriever_config.get("top_k") == 5
 
         except ImportError as e:
@@ -182,9 +182,11 @@ class TestChromaRAGPipeline:
             assert set(retrieval_types) == {"embedder", "retriever", "generator"}
 
             # Verify ChromaEmbeddingRetriever got the correct configuration
-            retriever_config_final = retrieval_spec_obj.component_configs.get(
-                "chroma_embedding_retriever", {}
+            retriever_spec = retrieval_spec_obj.get_component_by_name(
+                "chroma_embedding_retriever"
             )
+            assert retriever_spec is not None
+            retriever_config_final = retriever_spec.get_config()
             assert retriever_config_final.get("top_k") == 3
 
             print("✅ RAG pipeline test passed!")
@@ -220,11 +222,10 @@ class TestChromaRAGPipeline:
             default_config={"top_k": 10},
         )
 
-        config = {"root_dir": self.temp_dir, "top_k": 5}
-
         try:
+            chroma_spec.configure({"root_dir": self.temp_dir, "top_k": 5})
             # This should inject the document store automatically
-            component = create_haystack_component(chroma_spec, config)
+            component = create_haystack_component(chroma_spec)
 
             # If we get here without error, the injection worked
             assert component is not None

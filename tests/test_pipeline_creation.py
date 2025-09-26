@@ -87,9 +87,14 @@ class TestPipelineCreation:
         assert "embedder" in component_names
 
         # Check configurations were applied
-        assert spec.component_configs["chunker"]["split_length"] == 256
+        chunker_spec = spec.get_component_by_name("chunker")
+        assert chunker_spec is not None
+        assert chunker_spec.get_config()["split_length"] == 256
+
+        embedder_spec = spec.get_component_by_name("embedder")
+        assert embedder_spec is not None
         assert (
-            spec.component_configs["embedder"]["model"]
+            embedder_spec.get_config()["model"]
             == "sentence-transformers/all-MiniLM-L6-v2"
         )
 
@@ -179,9 +184,9 @@ class TestPipelineCreation:
         )
 
         # Check that both default and user config are present
-        embedder_config = spec.component_configs["embedder"]
-        # Note: config merging happens during component creation, not in the spec
-        # The spec only stores the user-provided config
+        embedder_spec = spec.get_component_by_name("embedder")
+        assert embedder_spec is not None
+        embedder_config = embedder_spec.get_config()
         assert "batch_size" in embedder_config  # From user
         assert embedder_config["batch_size"] == 32
 

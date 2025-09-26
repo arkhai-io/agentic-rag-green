@@ -138,11 +138,15 @@ class TestMarkerRAGPipeline:
             assert hasattr(pipeline, "run")
 
             # Verify component configurations
-            marker_config = spec.component_configs.get("marker_pdf_converter", {})
+            marker_spec = spec.get_component_by_name("marker_pdf_converter")
+            assert marker_spec is not None
+            marker_config = marker_spec.get_config()
             assert marker_config.get("languages") == "en"
             assert marker_config.get("store_full_path") is True
 
-            chunker_config = spec.component_configs.get("markdown_aware_chunker", {})
+            chunker_spec = spec.get_component_by_name("markdown_aware_chunker")
+            assert chunker_spec is not None
+            chunker_config = chunker_spec.get_config()
             assert chunker_config.get("chunk_size") == 800
 
         except ImportError as e:
@@ -380,12 +384,17 @@ class TestMarkerRAGPipeline:
             assert retrieval_pipeline is not None
 
             # Verify they use the same Chroma path for document storage
-            indexing_writer_config = indexing_spec_obj.component_configs.get(
-                "document_writer", {}
+            indexing_writer_spec = indexing_spec_obj.get_component_by_name(
+                "document_writer"
             )
-            retrieval_retriever_config = retrieval_spec_obj.component_configs.get(
-                "chroma_embedding_retriever", {}
+            assert indexing_writer_spec is not None
+            indexing_writer_config = indexing_writer_spec.get_config()
+
+            retrieval_retriever_spec = retrieval_spec_obj.get_component_by_name(
+                "chroma_embedding_retriever"
             )
+            assert retrieval_retriever_spec is not None
+            retrieval_retriever_config = retrieval_retriever_spec.get_config()
 
             # Both should reference the same root directory
             assert indexing_writer_config.get(
@@ -393,9 +402,11 @@ class TestMarkerRAGPipeline:
             ) == retrieval_retriever_config.get("root_dir")
 
             # Verify marker converter configuration
-            marker_config = indexing_spec_obj.component_configs.get(
-                "marker_pdf_converter", {}
+            marker_spec = indexing_spec_obj.get_component_by_name(
+                "marker_pdf_converter"
             )
+            assert marker_spec is not None
+            marker_config = marker_spec.get_config()
             assert marker_config.get("languages") == "en"
             assert marker_config.get("output_format") == "markdown"
             assert marker_config.get("store_full_path") is True
@@ -437,10 +448,14 @@ class TestMarkerRAGPipeline:
             )
 
             # Verify configuration optimized for performance
-            marker_config = spec.component_configs.get("marker_pdf_converter", {})
+            marker_spec = spec.get_component_by_name("marker_pdf_converter")
+            assert marker_spec is not None
+            marker_config = marker_spec.get_config()
             assert marker_config.get("store_full_path") is False
 
-            semantic_config = spec.component_configs.get("semantic_chunker", {})
+            semantic_spec = spec.get_component_by_name("semantic_chunker")
+            assert semantic_spec is not None
+            semantic_config = semantic_spec.get_config()
             assert semantic_config.get("max_chunk_size") == 800
 
         except ImportError as e:
