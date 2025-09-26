@@ -46,7 +46,7 @@ class GENERATOR(Enum):
 class WRITER(Enum):
     """Document writing/indexing components."""
 
-    DOCUMENT_WRITER = "document_writer"
+    CHROMA_DOCUMENT_WRITER = "chroma_document_writer"
 
 
 class DOCUMENT_STORE(Enum):

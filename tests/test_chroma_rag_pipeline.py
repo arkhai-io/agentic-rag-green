@@ -29,12 +29,12 @@ class TestChromaRAGPipeline:
             {"type": "CONVERTER.TEXT"},
             {"type": "CHUNKER.MARKDOWN_AWARE"},
             {"type": "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"},
-            {"type": "WRITER.DOCUMENT_WRITER"},
+            {"type": "WRITER.CHROMA_DOCUMENT_WRITER"},
         ]
 
         # Configuration with custom root directory
         config = {
-            "document_writer": {"root_dir": self.temp_dir},
+            "chroma_document_writer": {"root_dir": self.temp_dir},
             "markdown_aware_chunker": {"chunk_size": 500, "chunk_overlap": 50},
             "document_embedder": {"model": "sentence-transformers/all-MiniLM-L6-v2"},
         }
@@ -115,7 +115,7 @@ class TestChromaRAGPipeline:
             {"type": "CONVERTER.TEXT"},
             {"type": "CHUNKER.MARKDOWN_AWARE"},
             {"type": "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"},
-            {"type": "WRITER.DOCUMENT_WRITER"},
+            {"type": "WRITER.CHROMA_DOCUMENT_WRITER"},
         ]
 
         # 2. Retrieval Pipeline
@@ -132,7 +132,7 @@ class TestChromaRAGPipeline:
         }
 
         indexing_config = {
-            "document_writer": shared_config,
+            "chroma_document_writer": shared_config,
             "markdown_aware_chunker": {"chunk_size": 800, "chunk_overlap": 100},
             "document_embedder": {"model": shared_config["model"]},
         }
@@ -239,13 +239,13 @@ class TestChromaRAGPipeline:
         # Test both writer and retriever using same root directory
         pipeline_spec = [
             {"type": "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"},
-            {"type": "WRITER.DOCUMENT_WRITER"},
+            {"type": "WRITER.CHROMA_DOCUMENT_WRITER"},
             {"type": "EMBEDDER.SENTENCE_TRANSFORMERS"},
             {"type": "RETRIEVER.CHROMA_EMBEDDING"},
         ]
 
         config = {
-            "document_writer": {"root_dir": self.temp_dir},
+            "chroma_document_writer": {"root_dir": self.temp_dir},
             "chroma_embedding_retriever": {"root_dir": self.temp_dir, "top_k": 5},
             "document_embedder": {"model": "sentence-transformers/all-MiniLM-L6-v2"},
             "embedder": {"model": "sentence-transformers/all-MiniLM-L6-v2"},

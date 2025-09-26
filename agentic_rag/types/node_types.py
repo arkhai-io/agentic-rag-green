@@ -1,7 +1,7 @@
 """Types for Neo4j nodes."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 
 @dataclass
@@ -69,67 +69,27 @@ class ComponentNode:
 
 @dataclass
 class DocumentStoreNode:
-    """Represents a document store node with retrieval component information."""
+    """Minimal definition for a persisted document store."""
 
-    store_name: str
-    store_type: str  # "chroma", "elasticsearch", etc.
-    retrieval_components: List[
-        Dict[str, Any]
-    ]  # Ordered list of components with configs needed for retrieval
-    version: str = "1.0.0"
-    creator: str = "system"
-    root_dir: str = "."  # Directory where the document store is persisted
+    pipeline_name: str
+    root_dir: str
+    retrieval_components_json: str
     id: Optional[str] = None
 
     def __post_init__(self) -> None:
-        """Generate ID if not provided."""
         if self.id is None:
-            self.id = f"docstore_{self.store_name}_{self.store_type}".replace(" ", "_")
+            import hashlib
+
+            hash_input = f"{self.pipeline_name}__{self.root_dir}__{self.retrieval_components_json}"
+            self.id = f"docstore_{hashlib.sha256(hash_input.encode('utf-8')).hexdigest()[:12]}"
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for Neo4j insertion."""
-        # Convert complex objects to JSON strings for Neo4j compatibility
-        import json
-
-        retrieval_components_json = (
-            json.dumps(self.retrieval_components) if self.retrieval_components else "[]"
-        )
-
         return {
             "id": self.id,
-            "store_name": self.store_name,
-            "store_type": self.store_type,
-            "retrieval_components_json": retrieval_components_json,
-            "version": self.version,
-            "creator": self.creator,
+            "pipeline_name": self.pipeline_name,
             "root_dir": self.root_dir,
+            "retrieval_components_json": self.retrieval_components_json,
         }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "DocumentStoreNode":
-        """Create DocumentStoreNode from dictionary."""
-        import json
-
-        # Handle both old format (direct list) and new format (JSON string)
-        retrieval_components = data.get("retrieval_components", [])
-        if isinstance(retrieval_components, str):
-            # New format: JSON string
-            retrieval_components = json.loads(
-                data.get("retrieval_components_json", "[]")
-            )
-        elif "retrieval_components_json" in data:
-            # New format: JSON string in separate field
-            retrieval_components = json.loads(data["retrieval_components_json"])
-
-        return cls(
-            store_name=data["store_name"],
-            store_type=data["store_type"],
-            retrieval_components=retrieval_components,
-            version=data.get("version", "1.0.0"),
-            creator=data.get("creator", "system"),
-            root_dir=data.get("root_dir", "."),
-            id=data.get("id"),
-        )
 
 
 @dataclass

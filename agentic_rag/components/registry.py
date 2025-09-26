@@ -231,7 +231,7 @@ class ComponentRegistry:
         # Writers - Document indexing components
         self.register_component(
             ComponentSpec(
-                name="document_writer",
+                name="chroma_document_writer",
                 component_type=ComponentType.WRITER,
                 haystack_class="haystack.components.writers.DocumentWriter",
                 input_types=[DataType.LIST_DOCUMENT],
@@ -239,8 +239,8 @@ class ComponentRegistry:
                     DataType.DICT
                 ],  # Returns metadata about written documents
                 pipeline_usage=PipelineUsage.INDEXING,
-                dependencies=[],  # Document store will be passed during component creation
-                default_config={},
+                dependencies=[],
+                default_config={"root_dir": "."},
                 parallelizable=True,
             )
         )

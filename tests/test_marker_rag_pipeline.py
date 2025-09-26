@@ -101,7 +101,7 @@ class TestMarkerRAGPipeline:
             {"type": "CONVERTER.MARKER_PDF"},
             {"type": "CHUNKER.MARKDOWN_AWARE"},
             {"type": "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"},
-            {"type": "WRITER.DOCUMENT_WRITER"},
+            {"type": "WRITER.CHROMA_DOCUMENT_WRITER"},
         ]
 
         config = {
@@ -112,7 +112,7 @@ class TestMarkerRAGPipeline:
             },
             "markdown_aware_chunker": {"chunk_size": 800, "chunk_overlap": 100},
             "document_embedder": {"model": "sentence-transformers/all-MiniLM-L6-v2"},
-            "document_writer": {"root_dir": self.temp_dir},
+            "chroma_document_writer": {"root_dir": self.temp_dir},
         }
 
         try:
@@ -330,7 +330,7 @@ class TestMarkerRAGPipeline:
             {"type": "CONVERTER.MARKER_PDF"},
             {"type": "CHUNKER.MARKDOWN_AWARE"},
             {"type": "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"},
-            {"type": "WRITER.DOCUMENT_WRITER"},
+            {"type": "WRITER.CHROMA_DOCUMENT_WRITER"},
         ]
 
         # 2. Create retrieval pipeline
@@ -354,7 +354,7 @@ class TestMarkerRAGPipeline:
             },
             "markdown_aware_chunker": {"chunk_size": 800, "chunk_overlap": 100},
             "document_embedder": {"model": shared_config["model"]},
-            "document_writer": {"root_dir": shared_config["root_dir"]},
+            "chroma_document_writer": {"root_dir": shared_config["root_dir"]},
         }
 
         retrieval_config = {
@@ -385,7 +385,7 @@ class TestMarkerRAGPipeline:
 
             # Verify they use the same Chroma path for document storage
             indexing_writer_spec = indexing_spec_obj.get_component_by_name(
-                "document_writer"
+                "chroma_document_writer"
             )
             assert indexing_writer_spec is not None
             indexing_writer_config = indexing_writer_spec.get_config()
