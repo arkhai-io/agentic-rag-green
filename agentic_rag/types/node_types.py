@@ -151,3 +151,26 @@ class ComponentRelationship:
                 self.properties,
             )
         return (self.source_id, self.target_id, self.relationship_type)
+
+
+@dataclass
+class UserNode:
+    """Represents a user who owns pipelines."""
+
+    username: str
+    email: Optional[str] = None
+    display_name: Optional[str] = None
+    id: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.id is None:
+            base = self.username if not self.email else f"{self.username}__{self.email}"
+            self.id = base.replace(" ", "_")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "username": self.username,
+            "email": self.email,
+            "display_name": self.display_name,
+        }

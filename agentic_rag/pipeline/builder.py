@@ -1,6 +1,6 @@
 """Pipeline builder for creating Haystack pipelines from specifications."""
 
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from haystack import Pipeline
 
@@ -9,6 +9,7 @@ from ..types import (
     ComponentNode,
     ComponentSpec,
     PipelineSpec,
+    UserNode,
     create_haystack_component,
 )
 
@@ -71,7 +72,7 @@ class PipelineBuilder:
         """Create graph representation of the pipeline components."""
 
         nodes = []
-        node_id_by_name = {}
+        node_id_by_name: Dict[str, str] = {}
         for component_spec in spec.components:
             node = ComponentNode(
                 component_name=component_spec.name,
@@ -84,16 +85,38 @@ class PipelineBuilder:
             nodes.append(node_dict)
             node_id_by_name[component_spec.name] = node_dict["id"]
 
-        if self.graph_store is not None:
-            self.graph_store.add_nodes_batch(nodes, "Component")
-            if connections:
-                edges = []
-                for source_name, target_name in connections:
-                    source_id = node_id_by_name.get(source_name)
-                    target_id = node_id_by_name.get(target_name)
-                    if source_id and target_id:
-                        edges.append((source_id, target_id, "CONNECTED_TO"))
-                if edges:
-                    self.graph_store.add_edges_batch(
-                        edges, source_label="Component", target_label="Component"
-                    )
+        if self.graph_store is None:
+            return
+
+        # Add/update the owning user node
+        user_node = UserNode(username="test_user", display_name="Test User")
+        user_dict = user_node.to_dict()
+        self.graph_store.add_nodes_batch([user_dict], "User")
+
+        # Add component nodes
+        self.graph_store.add_nodes_batch(nodes, "Component")
+
+        # Connect user to the first component in the pipeline
+        if spec.components:
+            first_component_id = node_id_by_name.get(spec.components[0].name)
+            if first_component_id:
+                self.graph_store.add_edges_batch(
+                    [(user_dict["id"], first_component_id, "STARTS_WITH")],
+                    source_label="User",
+                    target_label="Component",
+                )
+
+        # Connect sequential components
+        if connections:
+            component_edges = []
+            for source_name, target_name in connections:
+                source_id = node_id_by_name.get(source_name)
+                target_id = node_id_by_name.get(target_name)
+                if source_id and target_id:
+                    component_edges.append((source_id, target_id, "CONNECTED_TO"))
+            if component_edges:
+                self.graph_store.add_edges_batch(
+                    component_edges,
+                    source_label="Component",
+                    target_label="Component",
+                )
