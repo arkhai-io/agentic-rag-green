@@ -75,7 +75,7 @@ class TestPipelineRunnerIntegration:
             component_specs = [
                 {"type": "CHUNKER.MARKDOWN_AWARE"},
                 {"type": "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"},
-                {"type": "WRITER.DOCUMENT_WRITER"},
+                {"type": "WRITER.CHROMA_DOCUMENT_WRITER"},
             ]
 
             config = {
@@ -83,7 +83,7 @@ class TestPipelineRunnerIntegration:
                 "document_embedder": {
                     "model": "sentence-transformers/all-MiniLM-L6-v2"
                 },
-                "document_writer": {"root_dir": self.temp_dir},
+                "chroma_document_writer": {"root_dir": self.temp_dir},
             }
 
             # Load the pipeline
@@ -124,7 +124,7 @@ class TestPipelineRunnerIntegration:
             indexing_specs = [
                 {"type": "CHUNKER.MARKDOWN_AWARE"},
                 {"type": "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"},
-                {"type": "WRITER.DOCUMENT_WRITER"},
+                {"type": "WRITER.CHROMA_DOCUMENT_WRITER"},
             ]
 
             indexing_config = {
@@ -132,7 +132,7 @@ class TestPipelineRunnerIntegration:
                 "document_embedder": {
                     "model": "sentence-transformers/all-MiniLM-L6-v2"
                 },
-                "document_writer": {
+                "chroma_document_writer": {
                     "root_dir": shared_datastore_path  # Shared location
                 },
             }
@@ -235,7 +235,7 @@ class TestPipelineRunnerIntegration:
             indexing_specs = [
                 {"type": "CHUNKER.MARKDOWN_AWARE"},
                 {"type": "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"},
-                {"type": "WRITER.DOCUMENT_WRITER"},
+                {"type": "WRITER.CHROMA_DOCUMENT_WRITER"},
             ]
 
             indexing_config = {
@@ -243,7 +243,7 @@ class TestPipelineRunnerIntegration:
                 "document_embedder": {
                     "model": "sentence-transformers/all-MiniLM-L6-v2"
                 },
-                "document_writer": {
+                "chroma_document_writer": {
                     "root_dir": shared_datastore_path
                 },  # Shared location
             }

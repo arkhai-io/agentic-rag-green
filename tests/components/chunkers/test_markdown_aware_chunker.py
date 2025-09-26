@@ -87,8 +87,9 @@ Final content section with additional text to make sure we have enough content t
             assert "markdown_aware_chunker" in component_names
 
             # Check configuration was applied
-            assert "markdown_aware_chunker" in spec.component_configs
-            chunker_config = spec.component_configs["markdown_aware_chunker"]
+            chunker_spec = spec.get_component_by_name("markdown_aware_chunker")
+            assert chunker_spec is not None
+            chunker_config = chunker_spec.get_config()
             assert chunker_config["chunk_size"] == 500
             assert chunker_config["chunk_overlap"] == 50
 
@@ -140,7 +141,9 @@ Final content section with additional text to make sure we have enough content t
                 assert expected_comp in component_names
 
             # Verify custom chunker configuration
-            chunker_config = spec.component_configs["markdown_aware_chunker"]
+            chunker_spec = spec.get_component_by_name("markdown_aware_chunker")
+            assert chunker_spec is not None
+            chunker_config = chunker_spec.get_config()
             assert chunker_config["chunk_size"] == 800
             assert chunker_config["chunk_overlap"] == 100
 
@@ -251,7 +254,9 @@ Final content section with additional text to make sure we have enough content t
             assert spec.components[1].name == "markdown_aware_chunker"
 
             # Verify custom configuration
-            chunker_config = spec.component_configs["markdown_aware_chunker"]
+            chunker_spec = spec.get_component_by_name("markdown_aware_chunker")
+            assert chunker_spec is not None
+            chunker_config = chunker_spec.get_config()
             assert chunker_config["chunk_size"] == 1000
             assert chunker_config["separators"] == ["\n\n", "\n", " "]
 

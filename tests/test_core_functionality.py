@@ -110,14 +110,11 @@ class TestCoreFunctionality:
 
         # Parse each component manually (like factory does)
         component_specs_list = []
-        component_configs = {}
-
         for spec_item in component_specs:
             component_name = factory._parse_component_spec(spec_item)
             spec = factory.registry.get_component_spec(component_name)
             assert spec is not None
-            component_specs_list.append(spec)
-            component_configs[component_name] = {}
+            component_specs_list.append(spec.configure({}))
 
         # Check we got the right components
         assert len(component_specs_list) == 3

@@ -16,6 +16,12 @@ from .component_enums import (
 )
 from .component_spec import ComponentSpec, create_haystack_component
 from .data_types import ComponentType, DataType, PipelineUsage
+from .node_types import (
+    ComponentNode,
+    ComponentRelationship,
+    DocumentStoreNode,
+    UserNode,
+)
 from .pipeline_spec import PipelineSpec
 
 __all__ = [
@@ -25,6 +31,11 @@ __all__ = [
     "ComponentSpec",
     "create_haystack_component",
     "PipelineSpec",
+    # Node types
+    "ComponentNode",
+    "ComponentRelationship",
+    "DocumentStoreNode",
+    "UserNode",
     # Component enums
     "CONVERTER",
     "CHUNKER",

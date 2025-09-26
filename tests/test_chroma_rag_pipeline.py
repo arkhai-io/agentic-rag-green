@@ -29,12 +29,12 @@ class TestChromaRAGPipeline:
             {"type": "CONVERTER.TEXT"},
             {"type": "CHUNKER.MARKDOWN_AWARE"},
             {"type": "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"},
-            {"type": "WRITER.DOCUMENT_WRITER"},
+            {"type": "WRITER.CHROMA_DOCUMENT_WRITER"},
         ]
 
         # Configuration with custom root directory
         config = {
-            "document_writer": {"root_dir": self.temp_dir},
+            "chroma_document_writer": {"root_dir": self.temp_dir},
             "markdown_aware_chunker": {"chunk_size": 500, "chunk_overlap": 50},
             "document_embedder": {"model": "sentence-transformers/all-MiniLM-L6-v2"},
         }
@@ -98,9 +98,9 @@ class TestChromaRAGPipeline:
             assert hasattr(pipeline, "run")
 
             # Verify retriever configuration
-            retriever_config = spec.component_configs.get(
-                "chroma_embedding_retriever", {}
-            )
+            retriever_spec = spec.get_component_by_name("chroma_embedding_retriever")
+            assert retriever_spec is not None
+            retriever_config = retriever_spec.get_config()
             assert retriever_config.get("top_k") == 5
 
         except ImportError as e:
@@ -115,7 +115,7 @@ class TestChromaRAGPipeline:
             {"type": "CONVERTER.TEXT"},
             {"type": "CHUNKER.MARKDOWN_AWARE"},
             {"type": "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"},
-            {"type": "WRITER.DOCUMENT_WRITER"},
+            {"type": "WRITER.CHROMA_DOCUMENT_WRITER"},
         ]
 
         # 2. Retrieval Pipeline
@@ -132,7 +132,7 @@ class TestChromaRAGPipeline:
         }
 
         indexing_config = {
-            "document_writer": shared_config,
+            "chroma_document_writer": shared_config,
             "markdown_aware_chunker": {"chunk_size": 800, "chunk_overlap": 100},
             "document_embedder": {"model": shared_config["model"]},
         }
@@ -182,9 +182,11 @@ class TestChromaRAGPipeline:
             assert set(retrieval_types) == {"embedder", "retriever", "generator"}
 
             # Verify ChromaEmbeddingRetriever got the correct configuration
-            retriever_config_final = retrieval_spec_obj.component_configs.get(
-                "chroma_embedding_retriever", {}
+            retriever_spec = retrieval_spec_obj.get_component_by_name(
+                "chroma_embedding_retriever"
             )
+            assert retriever_spec is not None
+            retriever_config_final = retriever_spec.get_config()
             assert retriever_config_final.get("top_k") == 3
 
             print("✅ RAG pipeline test passed!")
@@ -220,11 +222,10 @@ class TestChromaRAGPipeline:
             default_config={"top_k": 10},
         )
 
-        config = {"root_dir": self.temp_dir, "top_k": 5}
-
         try:
+            chroma_spec.configure({"root_dir": self.temp_dir, "top_k": 5})
             # This should inject the document store automatically
-            component = create_haystack_component(chroma_spec, config)
+            component = create_haystack_component(chroma_spec)
 
             # If we get here without error, the injection worked
             assert component is not None
@@ -238,13 +239,13 @@ class TestChromaRAGPipeline:
         # Test both writer and retriever using same root directory
         pipeline_spec = [
             {"type": "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"},
-            {"type": "WRITER.DOCUMENT_WRITER"},
+            {"type": "WRITER.CHROMA_DOCUMENT_WRITER"},
             {"type": "EMBEDDER.SENTENCE_TRANSFORMERS"},
             {"type": "RETRIEVER.CHROMA_EMBEDDING"},
         ]
 
         config = {
-            "document_writer": {"root_dir": self.temp_dir},
+            "chroma_document_writer": {"root_dir": self.temp_dir},
             "chroma_embedding_retriever": {"root_dir": self.temp_dir, "top_k": 5},
             "document_embedder": {"model": "sentence-transformers/all-MiniLM-L6-v2"},
             "embedder": {"model": "sentence-transformers/all-MiniLM-L6-v2"},

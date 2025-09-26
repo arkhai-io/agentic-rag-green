@@ -21,9 +21,21 @@ class ComponentSpec:
     dependencies: List[str] = field(default_factory=list)
     parallelizable: bool = True
 
+    # NEW: Store the final merged config right here
+    runtime_config: Dict[str, Any] = field(default_factory=dict)
+
     def is_compatible_input(self, data_type: DataType) -> bool:
         """Check if a data type is compatible with this component's inputs."""
         return data_type in self.input_types
+
+    def configure(self, user_config: Dict[str, Any]) -> "ComponentSpec":
+        """Merge user config with defaults and store as runtime config."""
+        self.runtime_config = {**self.default_config, **user_config}
+        return self
+
+    def get_config(self) -> Dict[str, Any]:
+        """Get the runtime config, falling back to default if not configured."""
+        return self.runtime_config if self.runtime_config else self.default_config
 
 
 def _create_chroma_document_store(root_dir: str = ".") -> Any:
@@ -44,10 +56,10 @@ def _create_chroma_document_store(root_dir: str = ".") -> Any:
         )
 
 
-def create_haystack_component(spec: ComponentSpec, config: Dict[str, Any]) -> Any:
-    """Create a Haystack component from specification and configuration."""
-    # Merge default config with provided config
-    merged_config = {**spec.default_config, **config}
+def create_haystack_component(spec: ComponentSpec) -> Any:
+    """Create a Haystack component from specification - handles config internally."""
+    # Get the final config from ComponentSpec
+    config = spec.get_config().copy()  # Copy to avoid modifying original
 
     # Special handling for Chroma components - inject document store
     if (
@@ -55,10 +67,10 @@ def create_haystack_component(spec: ComponentSpec, config: Dict[str, Any]) -> An
         or "DocumentWriter" in spec.haystack_class
     ):
         # Get root directory from config or use current directory
-        merged_config.pop("model", None)
-        root_dir = merged_config.pop("root_dir", ".")
+        config.pop("model", None)  # Remove model if present for these components
+        root_dir = config.pop("root_dir", ".")
         document_store = _create_chroma_document_store(root_dir)
-        merged_config["document_store"] = document_store
+        config["document_store"] = document_store
 
     # Dynamic import and instantiation
     module_path, class_name = spec.haystack_class.rsplit(".", 1)
@@ -68,7 +80,7 @@ def create_haystack_component(spec: ComponentSpec, config: Dict[str, Any]) -> An
 
         module = importlib.import_module(module_path)
         component_class = getattr(module, class_name)
-        return component_class(**merged_config)
+        return component_class(**config)
     except (ImportError, AttributeError) as e:
         raise ImportError(
             f"Failed to import Haystack component {spec.haystack_class}: {e}"
