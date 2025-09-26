@@ -1,7 +1,7 @@
 """Types for Neo4j nodes."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -20,12 +20,8 @@ class ComponentNode:
         if self.id is None:
             # Create deterministic hash from: component_name__pipeline_name__version__author__component_config
             import hashlib
-            import json
 
-            config_str = json.dumps(
-                self.component_config, sort_keys=True, separators=(",", ":")
-            )
-            combined = f"{self.component_name}__{self.pipeline_name}__{self.version}__{self.author}__{config_str}"
+            combined = f"{self.component_name}__{self.pipeline_name}__{self.version}__{self.author}"
 
             # Generate SHA-256 hash and take first 12 characters for readability
             hash_obj = hashlib.sha256(combined.encode("utf-8"))
@@ -73,14 +69,18 @@ class DocumentStoreNode:
 
     pipeline_name: str
     root_dir: str
-    retrieval_components_json: str
+    component_node_ids: List[str]
+    author: str = "test_user"
+    version: str = "1.0.0"
     id: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.id is None:
             import hashlib
 
-            hash_input = f"{self.pipeline_name}__{self.root_dir}__{self.retrieval_components_json}"
+            hash_input = (
+                f"{self.pipeline_name}__{self.root_dir}__{self.author}__{self.version}"
+            )
             self.id = f"docstore_{hashlib.sha256(hash_input.encode('utf-8')).hexdigest()[:12]}"
 
     def to_dict(self) -> Dict[str, Any]:
@@ -88,7 +88,9 @@ class DocumentStoreNode:
             "id": self.id,
             "pipeline_name": self.pipeline_name,
             "root_dir": self.root_dir,
-            "retrieval_components_json": self.retrieval_components_json,
+            "component_node_ids": self.component_node_ids,
+            "author": self.author,
+            "version": self.version,
         }
 
 

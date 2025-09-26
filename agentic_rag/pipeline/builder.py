@@ -1,6 +1,5 @@
 """Pipeline builder for creating Haystack pipelines from specifications."""
 
-import json
 from typing import Any, Dict, List, Optional, Tuple
 
 from haystack import Pipeline
@@ -101,7 +100,6 @@ class PipelineBuilder:
 
         document_store_nodes: List[Dict[str, Any]] = []
         component_to_store_edges: List[Tuple[str, str, str]] = []
-        store_to_component_edges: List[Tuple[str, str, str]] = []
 
         for index, component_spec in enumerate(spec.components):
             if component_spec.name != "chroma_document_writer":
@@ -110,27 +108,26 @@ class PipelineBuilder:
             writer_config = component_spec.get_config()
             root_dir = writer_config.get("root_dir", ".")
 
-            related_components: List[Dict[str, Any]] = []
-            for related in spec.components[: index + 1]:
-                if related.component_type in {
-                    ComponentType.EMBEDDER,
-                    ComponentType.RETRIEVER,
-                }:
-                    related_components.append(
-                        {
-                            "name": related.name,
-                            "config": related.get_config(),
-                        }
-                    )
+            # Collect node IDs in reverse order (writer first, then preceding components)
+            related_component_ids: List[str] = []
 
-            retrieval_components_json = json.dumps(
-                related_components, sort_keys=True, separators=(",", ":")
-            )
+            # Add writer first
+            writer_id = node_id_by_name.get(component_spec.name)
+            if writer_id:
+                related_component_ids.append(writer_id)
+
+            # Then add preceding embedders in reverse order
+            for i in range(index - 1, -1, -1):
+                related = spec.components[i]
+                if related.component_type == ComponentType.EMBEDDER:
+                    related_id = node_id_by_name.get(related.name)
+                    if related_id:
+                        related_component_ids.append(related_id)
 
             doc_store_node = DocumentStoreNode(
                 pipeline_name=spec.name,
                 root_dir=root_dir,
-                retrieval_components_json=retrieval_components_json,
+                component_node_ids=related_component_ids,
             )
             doc_store_dict = doc_store_node.to_dict()
             document_store_nodes.append(doc_store_dict)
@@ -141,17 +138,6 @@ class PipelineBuilder:
                     (writer_id, doc_store_dict["id"], "WRITES_TO")
                 )
 
-            for related in spec.components[: index + 1]:
-                if related.component_type in {
-                    ComponentType.EMBEDDER,
-                    ComponentType.RETRIEVER,
-                }:
-                    related_id = node_id_by_name.get(related.name)
-                    if related_id:
-                        store_to_component_edges.append(
-                            (doc_store_dict["id"], related_id, "USES_DOCUMENT_STORE")
-                        )
-
         if document_store_nodes:
             self.graph_store.add_nodes_batch(document_store_nodes, "DocumentStore")
 
@@ -160,12 +146,6 @@ class PipelineBuilder:
                 component_to_store_edges,
                 source_label="Component",
                 target_label="DocumentStore",
-            )
-        if store_to_component_edges:
-            self.graph_store.add_edges_batch(
-                store_to_component_edges,
-                source_label="DocumentStore",
-                target_label="Component",
             )
 
         # Connect user to the first component in the pipeline
