@@ -1,7 +1,17 @@
-"""Pipeline runner for executing Haystack pipelines with data."""
+"""Pipeline runner for executing Haystack pipelines with data.
+
+ARCHITECTURE:
+- Factory: Build pipelines once and store in Neo4j (creation time)
+- Runner: Load pipelines from Neo4j and execute (runtime)
+
+CURRENT STATE:
+- Legacy methods (load_pipeline) still create graphs - will be deprecated
+- New methods (load_from_graph) load from Neo4j - preferred approach
+"""
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..components import GraphStore
 from ..types import PipelineSpec
 from .factory import PipelineFactory
 
@@ -9,14 +19,20 @@ from .factory import PipelineFactory
 class PipelineRunner:
     """Executes pipelines with input data."""
 
-    def __init__(self, factory: Optional[PipelineFactory] = None) -> None:
+    def __init__(
+        self,
+        graph_store: Optional[GraphStore] = None,
+        factory: Optional[PipelineFactory] = None,
+    ) -> None:
         """
         Initialize the pipeline runner.
 
         Args:
-            factory: Optional PipelineFactory instance. If None, creates a new one.
+            graph_store: Optional GraphStore for loading pipelines from Neo4j
+            factory: Optional PipelineFactory instance for legacy methods
         """
-        self.factory = factory or PipelineFactory()
+        self.graph_store = graph_store
+        self.factory = factory or PipelineFactory()  # For legacy methods
         self._active_pipeline: Optional[Tuple[PipelineSpec, Any]] = None
 
     def load_pipeline(
@@ -26,7 +42,9 @@ class PipelineRunner:
         config: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
-        Load a pipeline from component specifications.
+        [LEGACY] Load a pipeline from component specifications.
+
+        NOTE: This method creates graphs at runtime - use load_from_graph() instead.
 
         Args:
             component_specs: List of component specifications
@@ -53,6 +71,32 @@ class PipelineRunner:
             haystack_pipeline: Built Haystack pipeline
         """
         self._active_pipeline = (spec, haystack_pipeline)
+
+    def load_from_graph(self, pipeline_name: str) -> None:
+        """
+        [PREFERRED] Load a pipeline from Neo4j graph storage.
+
+        This is the preferred method - pipelines should be built once with Factory
+        and then loaded many times with this method.
+
+        Args:
+            pipeline_name: Name of the pipeline stored in Neo4j
+
+        Raises:
+            RuntimeError: If no graph store is configured
+            ValueError: If pipeline not found in graph
+        """
+        if not self.graph_store:
+            raise RuntimeError(
+                "No graph store configured. Pass GraphStore to constructor."
+            )
+
+        # TODO: Implement loading pipeline from Neo4j
+        # 1. Query Neo4j for pipeline components and connections
+        # 2. Reconstruct PipelineSpec from stored data
+        # 3. Build Haystack pipeline from loaded spec
+        # 4. Set self._active_pipeline
+        raise NotImplementedError("load_from_graph() not yet implemented")
 
     def run(self, pipeline_type: str, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """
