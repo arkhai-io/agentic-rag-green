@@ -22,7 +22,7 @@ from .node_types import (
     DocumentStoreNode,
     UserNode,
 )
-from .pipeline_spec import PipelineSpec
+from .pipeline_spec import PipelineSpec, PipelineType
 
 __all__ = [
     "DataType",
@@ -31,6 +31,7 @@ __all__ = [
     "ComponentSpec",
     "create_haystack_component",
     "PipelineSpec",
+    "PipelineType",
     # Node types
     "ComponentNode",
     "ComponentRelationship",

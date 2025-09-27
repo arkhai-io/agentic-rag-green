@@ -1,9 +1,17 @@
 """Pipeline specification definitions."""
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from enum import Enum
+from typing import Dict, List, Optional, Tuple
 
 from .component_spec import ComponentSpec
+
+
+class PipelineType(Enum):
+    """Type of pipeline - indexing or retrieval."""
+
+    INDEXING = "indexing"
+    RETRIEVAL = "retrieval"
 
 
 @dataclass
@@ -12,7 +20,11 @@ class PipelineSpec:
 
     name: str
     components: List[ComponentSpec]
+    pipeline_type: PipelineType = PipelineType.INDEXING
     connections: List[Tuple[str, str]] = field(default_factory=list)
+    indexing_pipelines: Optional[Dict[str, str]] = (
+        None  # Maps store_name -> indexing_pipeline_name
+    )
 
     def __post_init__(self) -> None:
         """Validate pipeline specification."""

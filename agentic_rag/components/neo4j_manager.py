@@ -84,3 +84,31 @@ class GraphStore:
                     MERGE (source)-[:{safe_rel_type}]->(target)
                 """
                 session.run(query, edges=edge_list)
+
+    def get_document_store_component_ids(self, store_id: str) -> List[str]:
+        """Fetch the component_node_ids from a DocumentStore node by exact ID."""
+        with self.driver.session(database="neo4j") as session:
+            query = """
+                MATCH (d:DocumentStore {id: $store_id})
+                RETURN d.component_node_ids AS component_ids
+            """
+            result = session.run(query, store_id=store_id).single()
+            if result and result["component_ids"]:
+                return list(result["component_ids"])
+            return []
+
+    def get_component_nodes_by_ids(
+        self, component_ids: List[str]
+    ) -> List[Dict[str, object]]:
+        """Fetch multiple Component nodes by their IDs."""
+        if not component_ids:
+            return []
+
+        with self.driver.session(database="neo4j") as session:
+            query = """
+                UNWIND $ids AS id
+                MATCH (c:Component {id: id})
+                RETURN c
+            """
+            results = session.run(query, ids=component_ids).data()
+            return [dict(r["c"]) for r in results]
