@@ -8,23 +8,24 @@ This module provides a clean separation between pipeline creation (build-time) a
 graph TB
     subgraph "Creation Time (Once)"
         User1[User] --> Factory[PipelineFactory]
-        Factory --> Manager[PipelineManager]
-        Manager --> Storage[GraphStorage]
+        Factory --> Storage[GraphStorage]
         Storage --> Neo4j[(Neo4j Database)]
     end
 
     subgraph "Runtime (Many Times)"
         User2[User] --> Runner[PipelineRunner]
         Runner --> Neo4j
-        Runner --> Haystack[Haystack Pipeline]
+        Runner --> Storage2[GraphStorage]
+        Storage2 --> Haystack[Haystack Pipeline]
         Haystack --> Results[Execution Results]
     end
 
     subgraph "Legacy Path (Deprecated)"
         User3[User] --> Runner2[PipelineRunner]
         Runner2 -.-> Factory2[PipelineFactory]
-        Factory2 -.-> Neo4j
-        Runner2 --> Haystack2[Haystack Pipeline]
+        Factory2 -.-> Storage3[GraphStorage]
+        Storage3 -.-> Neo4j
+        Storage3 -.-> Haystack2[Haystack Pipeline]
     end
 ```
 
@@ -35,20 +36,15 @@ graph TB
 - Parses component specifications from dictionaries
 - Validates component types and configurations
 - Creates `PipelineSpec` objects
-- Delegates to `PipelineManager` for storage
-
-### 🔧 **PipelineManager** (`manager.py`)
-**Purpose**: Manages pipeline lifecycle (creation + runtime)
-- **Creation**: Builds graph representations via `GraphStorage`
-- **Runtime**: Builds Haystack pipelines from specifications
-- Determines component connections and dependencies
+- Delegates to `GraphStorage` for storage
 
 ### 💾 **GraphStorage** (`storage.py`)
-**Purpose**: Handles Neo4j storage and graph operations
-- Stores pipeline components and relationships
-- Handles component substitutions (e.g., writer → retriever)
-- Manages DocumentStore nodes and connections
-- Creates centralized graph relationships
+**Purpose**: Handles all pipeline operations and Neo4j storage
+- **Graph Operations**: Stores pipeline components and relationships
+- **Component Logic**: Handles substitutions (e.g., writer → retriever)
+- **Pipeline Building**: Creates both graph and Haystack representations
+- **Connection Logic**: Determines component connections and dependencies
+- **Neo4j Management**: Manages DocumentStore nodes and relationships
 
 ### 🏃 **PipelineRunner** (`runner.py`)
 **Purpose**: Executes pipelines with data
@@ -107,20 +103,17 @@ results = runner.run("indexing", data)
 sequenceDiagram
     participant U as User
     participant F as PipelineFactory
-    participant M as PipelineManager
     participant S as GraphStorage
     participant N as Neo4j
 
     U->>F: build_pipeline_graph(components, name)
     F->>F: Parse & validate components
     F->>F: Create PipelineSpec
-    F->>M: build_pipeline_graph(spec)
-    M->>M: Determine connections
-    M->>S: create_pipeline_graph(spec, connections)
+    F->>S: build_pipeline_graph(spec)
+    S->>S: Determine connections
     S->>S: Apply component substitutions
     S->>N: Store components & relationships
-    S-->>M: Graph created
-    M-->>F: Success
+    S-->>F: Graph created
     F-->>U: PipelineSpec
 ```
 
@@ -151,15 +144,20 @@ sequenceDiagram
     participant U as User
     participant R as PipelineRunner
     participant F as PipelineFactory
+    participant S as GraphStorage
     participant N as Neo4j
     participant H as Haystack
 
     U->>R: load_pipeline(components, name)
     R->>F: build_pipeline_graph(components, name)
-    F->>N: Store graph (expensive!)
+    F->>S: build_pipeline_graph(spec)
+    S->>N: Store graph (expensive!)
+    S-->>F: Success
     F-->>R: PipelineSpec
-    R->>H: Build Haystack pipeline
-    H-->>R: Ready pipeline
+    R->>S: build_haystack_pipeline(spec)
+    S->>H: Create pipeline
+    H-->>S: Ready pipeline
+    S-->>R: Haystack pipeline
 
     U->>R: run("indexing", data)
     R->>H: Execute with data
@@ -174,8 +172,7 @@ pipeline/
 ├── README.md           # This file
 ├── __init__.py         # Module exports
 ├── factory.py          # PipelineFactory - creation & validation
-├── manager.py          # PipelineManager - lifecycle management
-├── storage.py          # GraphStorage - Neo4j operations
+├── storage.py          # GraphStorage - all pipeline operations & Neo4j
 └── runner.py           # PipelineRunner - execution
 ```
 

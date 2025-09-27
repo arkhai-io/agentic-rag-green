@@ -56,7 +56,10 @@ class PipelineRunner:
         spec = self.factory.build_pipeline_graph(component_specs, pipeline_name, config)
 
         # Build Haystack pipeline for execution
-        haystack_pipeline = self.factory.pipeline_manager.build_haystack_pipeline(spec)
+        if self.factory.graph_storage:
+            haystack_pipeline = self.factory.graph_storage.build_haystack_pipeline(spec)
+        else:
+            raise RuntimeError("No graph storage configured in factory")
 
         self._active_pipeline = (spec, haystack_pipeline)
 

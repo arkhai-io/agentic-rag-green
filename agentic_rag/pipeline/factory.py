@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from ..components import GraphStore, get_default_registry
 from ..types import PipelineSpec, get_component_value, validate_component_spec
-from .manager import PipelineManager
+from .storage import GraphStorage
 
 
 class PipelineFactory:
@@ -13,7 +13,9 @@ class PipelineFactory:
     def __init__(self, graph_store: Optional[GraphStore] = None) -> None:
         self.registry = get_default_registry()
         self.graph_store = graph_store
-        self.pipeline_manager = PipelineManager(self.registry, graph_store)
+        self.graph_storage = (
+            GraphStorage(graph_store, self.registry) if graph_store else None
+        )
 
     def build_pipeline_graphs_from_specs(
         self,
@@ -92,7 +94,10 @@ class PipelineFactory:
         )
 
         # Build the graph representation (no Haystack pipeline)
-        self.pipeline_manager.build_pipeline_graph(pipeline_spec)
+        if self.graph_storage:
+            self.graph_storage.build_pipeline_graph(pipeline_spec)
+        else:
+            print("Warning: No graph store configured, pipeline graph not created")
 
         return pipeline_spec
 
