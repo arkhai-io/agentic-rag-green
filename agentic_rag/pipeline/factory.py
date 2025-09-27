@@ -1,19 +1,19 @@
-"""Factory for creating pipeline graphs from specifications."""
+"""Factory for creating pipelines from specifications."""
 
 from typing import Any, Dict, List, Optional
 
 from ..components import GraphStore, get_default_registry
 from ..types import PipelineSpec, get_component_value, validate_component_spec
-from .builder import PipelineBuilder
+from .manager import PipelineManager
 
 
-class GraphFactory:
-    """Factory for creating pipeline graphs from component specifications."""
+class PipelineFactory:
+    """Factory for creating pipelines from component specifications."""
 
     def __init__(self, graph_store: Optional[GraphStore] = None) -> None:
         self.registry = get_default_registry()
         self.graph_store = graph_store
-        self.builder = PipelineBuilder(self.registry, graph_store)
+        self.pipeline_manager = PipelineManager(self.registry, graph_store)
 
     def build_pipeline_graphs_from_specs(
         self,
@@ -92,7 +92,7 @@ class GraphFactory:
         )
 
         # Build the graph representation (no Haystack pipeline)
-        self.builder.build_pipeline_graph(pipeline_spec)
+        self.pipeline_manager.build_pipeline_graph(pipeline_spec)
 
         return pipeline_spec
 

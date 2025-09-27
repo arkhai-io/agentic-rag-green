@@ -1,4 +1,4 @@
-"""Pipeline graph builder for creating graph representations of pipelines."""
+"""Graph storage for creating and managing graph representations of pipelines."""
 
 from typing import Any, Dict, List, Tuple
 
@@ -14,8 +14,8 @@ from ..types import (
 )
 
 
-class PipelineGraphBuilder:
-    """Builds graph representations of pipeline components."""
+class GraphStorage:
+    """Stores and manages graph representations of pipeline components and their relationships."""
 
     def __init__(self, graph_store: GraphStore) -> None:
         self.graph_store = graph_store

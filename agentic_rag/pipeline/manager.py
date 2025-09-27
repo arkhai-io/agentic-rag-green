@@ -1,4 +1,4 @@
-"""Pipeline builder for creating Haystack pipelines from specifications."""
+"""Pipeline manager for creating and managing pipelines from specifications."""
 
 from typing import Any, List, Optional, Tuple
 
@@ -6,18 +6,18 @@ from haystack import Pipeline
 
 from ..components import ComponentRegistry, GraphStore
 from ..types import ComponentSpec, PipelineSpec, create_haystack_component
-from .graph_builder import PipelineGraphBuilder
+from .storage import GraphStorage
 
 
-class PipelineBuilder:
-    """Builds Haystack pipelines from pipeline specifications."""
+class PipelineManager:
+    """Manages pipelines - builds graphs, loads from storage, creates Haystack pipelines."""
 
     def __init__(
         self, registry: ComponentRegistry, graph_store: Optional[GraphStore] = None
     ) -> None:
         self.registry = registry
         self.graph_store = graph_store
-        self.graph_builder = PipelineGraphBuilder(graph_store) if graph_store else None
+        self.graph_storage = GraphStorage(graph_store) if graph_store else None
 
     def build_pipeline_graph(self, spec: PipelineSpec) -> None:
         """Build a graph representation of the pipeline specification."""
@@ -25,9 +25,9 @@ class PipelineBuilder:
         # Determine connections based on component order and dependencies
         connections = self._determine_connections(spec.components)
 
-        # Create graph representation if graph builder is available
-        if self.graph_builder:
-            self.graph_builder.create_pipeline_graph(spec, connections)
+        # Create graph representation if graph storage is available
+        if self.graph_storage:
+            self.graph_storage.create_pipeline_graph(spec, connections)
         else:
             print("Warning: No graph store configured, pipeline graph not created")
 

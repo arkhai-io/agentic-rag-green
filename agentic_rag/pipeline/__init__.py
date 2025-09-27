@@ -1,11 +1,11 @@
 """Pipeline creation, management, and execution system."""
 
-from .builder import PipelineBuilder
-from .factory import GraphFactory
+from .factory import PipelineFactory
+from .manager import PipelineManager
 from .runner import PipelineRunner
 
 __all__ = [
-    "GraphFactory",
-    "PipelineBuilder",
+    "PipelineFactory",
+    "PipelineManager",
     "PipelineRunner",
 ]

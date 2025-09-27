@@ -1,7 +1,7 @@
 """Agentic RAG - A Python package for agentic retrieval-augmented generation."""
 
 from .components import ComponentRegistry, get_default_registry
-from .pipeline import GraphFactory
+from .pipeline import PipelineFactory
 from .types import (
     DOCUMENT_STORE,
     ComponentSpec,
@@ -19,7 +19,7 @@ __all__ = [
     "__version__",
     "__author__",
     "__email__",
-    "GraphFactory",
+    "PipelineFactory",
     "ComponentRegistry",
     "get_default_registry",
     "ComponentSpec",
