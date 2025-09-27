@@ -3,20 +3,20 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..types import PipelineSpec
-from .factory import PipelineFactory
+from .factory import GraphFactory
 
 
 class PipelineRunner:
     """Executes pipelines with input data."""
 
-    def __init__(self, factory: Optional[PipelineFactory] = None) -> None:
+    def __init__(self, factory: Optional[GraphFactory] = None) -> None:
         """
         Initialize the pipeline runner.
 
         Args:
-            factory: Optional PipelineFactory instance. If None, creates a new one.
+            factory: Optional GraphFactory instance. If None, creates a new one.
         """
-        self.factory = factory or PipelineFactory()
+        self.factory = factory or GraphFactory()
         self._active_pipeline: Optional[Tuple[PipelineSpec, Any]] = None
 
     def load_pipeline(
@@ -34,10 +34,11 @@ class PipelineRunner:
             pipeline_name: Name for the pipeline
             config: Optional configuration dict
         """
-        # Create pipeline
-        spec, haystack_pipeline = self.factory.create_pipeline_from_spec(
-            component_specs, pipeline_name, config
-        )
+        # Create pipeline graph
+        spec = self.factory.build_pipeline_graph(component_specs, pipeline_name, config)
+
+        # Build Haystack pipeline for execution
+        haystack_pipeline = self.factory.builder.build_haystack_pipeline(spec)
 
         self._active_pipeline = (spec, haystack_pipeline)
 

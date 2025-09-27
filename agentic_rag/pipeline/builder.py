@@ -19,6 +19,18 @@ class PipelineBuilder:
         self.graph_store = graph_store
         self.graph_builder = PipelineGraphBuilder(graph_store) if graph_store else None
 
+    def build_pipeline_graph(self, spec: PipelineSpec) -> None:
+        """Build a graph representation of the pipeline specification."""
+
+        # Determine connections based on component order and dependencies
+        connections = self._determine_connections(spec.components)
+
+        # Create graph representation if graph builder is available
+        if self.graph_builder:
+            self.graph_builder.create_pipeline_graph(spec, connections)
+        else:
+            print("Warning: No graph store configured, pipeline graph not created")
+
     def build_haystack_pipeline(self, spec: PipelineSpec) -> Any:
         """Build a Haystack pipeline from a pipeline specification."""
 
@@ -41,10 +53,6 @@ class PipelineBuilder:
                 pipeline.connect(source, target)
             except Exception as e:
                 print(f"Warning: Could not connect {source} -> {target}: {e}")
-
-        # Create graph representation if graph builder is available
-        if self.graph_builder:
-            self.graph_builder.create_pipeline_graph(spec, connections)
 
         return pipeline
 

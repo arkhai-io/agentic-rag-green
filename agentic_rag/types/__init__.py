@@ -14,8 +14,18 @@ from .component_enums import (
     parse_component_spec,
     validate_component_spec,
 )
+from .component_mappings import (
+    ComponentSubstitution,
+    get_component_substitution,
+    should_substitute_component,
+)
 from .component_spec import ComponentSpec, create_haystack_component
 from .data_types import ComponentType, DataType, PipelineUsage
+from .graph_relationships import (
+    GraphRelationship,
+    get_relationship_name,
+    get_safe_relationship_name,
+)
 from .node_types import (
     ComponentNode,
     ComponentRelationship,
@@ -46,6 +56,14 @@ __all__ = [
     "GENERATOR",
     "WRITER",
     "ComponentEnum",
+    # Component mappings
+    "ComponentSubstitution",
+    "get_component_substitution",
+    "should_substitute_component",
+    # Graph relationships
+    "GraphRelationship",
+    "get_relationship_name",
+    "get_safe_relationship_name",
     # Utility functions
     "parse_component_spec",
     "get_component_value",

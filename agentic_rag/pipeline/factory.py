@@ -1,26 +1,27 @@
-"""Factory for creating dynamic pipelines from specifications."""
+"""Factory for creating pipeline graphs from specifications."""
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from ..components import get_default_registry
+from ..components import GraphStore, get_default_registry
 from ..types import PipelineSpec, get_component_value, validate_component_spec
 from .builder import PipelineBuilder
 
 
-class PipelineFactory:
-    """Factory for creating pipelines from component specifications."""
+class GraphFactory:
+    """Factory for creating pipeline graphs from component specifications."""
 
-    def __init__(self) -> None:
+    def __init__(self, graph_store: Optional[GraphStore] = None) -> None:
         self.registry = get_default_registry()
-        self.builder = PipelineBuilder(self.registry)
+        self.graph_store = graph_store
+        self.builder = PipelineBuilder(self.registry, graph_store)
 
-    def create_pipelines_from_specs(
+    def build_pipeline_graphs_from_specs(
         self,
         pipeline_specs: List[List[Dict[str, str]]],
         configs: Optional[List[Dict[str, Any]]] = None,
-    ) -> List[Tuple[PipelineSpec, Any]]:
+    ) -> List[PipelineSpec]:
         """
-        Create multiple pipelines from dict-based specifications.
+        Build multiple pipeline graphs from dict-based specifications.
 
         Args:
             pipeline_specs: List of component specifications as dicts.
@@ -28,7 +29,7 @@ class PipelineFactory:
             configs: Optional list of configuration dicts for each pipeline
 
         Returns:
-            List of tuples containing (PipelineSpec, haystack.Pipeline)
+            List of PipelineSpec objects with graph representations built
         """
         if configs is None:
             configs = [{}] * len(pipeline_specs)
@@ -36,7 +37,7 @@ class PipelineFactory:
         if len(configs) != len(pipeline_specs):
             raise ValueError("Number of configs must match number of pipeline specs")
 
-        pipelines = []
+        pipeline_specs_list = []
 
         for i, (spec, config) in enumerate(zip(pipeline_specs, configs)):
             if len(spec) < 1 or len(spec) > 5:
@@ -45,21 +46,19 @@ class PipelineFactory:
                 )
 
             pipeline_name = f"pipeline_{i}"
-            pipeline_spec, haystack_pipeline = self.create_pipeline_from_spec(
-                spec, pipeline_name, config
-            )
-            pipelines.append((pipeline_spec, haystack_pipeline))
+            pipeline_spec = self.build_pipeline_graph(spec, pipeline_name, config)
+            pipeline_specs_list.append(pipeline_spec)
 
-        return pipelines
+        return pipeline_specs_list
 
-    def create_pipeline_from_spec(
+    def build_pipeline_graph(
         self,
         component_specs: List[Dict[str, str]],
         pipeline_name: str,
         config: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[PipelineSpec, Any]:
+    ) -> PipelineSpec:
         """
-        Create a single pipeline from dict-based component specifications.
+        Build a single pipeline graph from dict-based component specifications.
 
         Args:
             component_specs: List of component specifications as dicts
@@ -68,7 +67,7 @@ class PipelineFactory:
             config: Optional configuration dict
 
         Returns:
-            Tuple of (PipelineSpec, haystack.Pipeline)
+            PipelineSpec with graph representation built
         """
         config = config or {}
 
@@ -92,10 +91,10 @@ class PipelineFactory:
             components=component_specs_list,  # Already configured!
         )
 
-        # Build the actual Haystack pipeline
-        haystack_pipeline = self.builder.build_haystack_pipeline(pipeline_spec)
+        # Build the graph representation (no Haystack pipeline)
+        self.builder.build_pipeline_graph(pipeline_spec)
 
-        return pipeline_spec, haystack_pipeline
+        return pipeline_spec
 
     def _parse_component_spec(self, spec_item: Dict[str, str]) -> str:
         """
