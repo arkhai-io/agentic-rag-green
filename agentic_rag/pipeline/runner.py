@@ -33,7 +33,7 @@ class PipelineRunner:
         """
         self.graph_store = graph_store
         self.factory = factory or PipelineFactory()  # For legacy methods
-        self._active_pipeline: Optional[Tuple[PipelineSpec, Any]] = None
+        self._active_pipeline: Optional[Tuple[Any, Any]] = None
 
     def load_pipeline(
         self,
@@ -100,6 +100,40 @@ class PipelineRunner:
         # 3. Build Haystack pipeline from loaded spec
         # 4. Set self._active_pipeline
         raise NotImplementedError("load_from_graph() not yet implemented")
+
+    def load_pipeline_graph(self, pipeline_hashes: List[str], username: str) -> None:
+        """
+        [NEW] Load a pipeline from Neo4j using pipeline hashes and username.
+
+        This method loads pipelines by their hash identifiers and associates them
+        with a specific user context.
+
+        Args:
+            pipeline_hashes: List of pipeline hash identifiers
+            username: Username for pipeline context and permissions
+
+        Raises:
+            RuntimeError: If no graph store is configured
+            ValueError: If pipeline hashes not found or invalid username
+        """
+        if not self.graph_store:
+            raise RuntimeError(
+                "No graph store configured. Pass GraphStore to constructor."
+            )
+
+        # Delegate to GraphStorage for actual loading logic
+        from ..components import get_default_registry
+        from .storage import GraphStorage
+
+        registry = get_default_registry()
+        graph_storage = GraphStorage(self.graph_store, registry)
+
+        pipelines_data = graph_storage.load_pipeline_by_hashes(
+            pipeline_hashes, username
+        )
+
+        # For now, just store the raw data - full reconstruction can be added later
+        self._active_pipeline = (pipeline_hashes[0], pipelines_data)
 
     def run(self, pipeline_type: str, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """

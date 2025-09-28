@@ -2,7 +2,7 @@
 
 import os
 import ssl
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import certifi
 from dotenv import load_dotenv
@@ -112,3 +112,110 @@ class GraphStore:
             """
             results = session.run(query, ids=component_ids).data()
             return [dict(r["c"]) for r in results]
+
+    def validate_user_exists(self, username: str) -> bool:
+        """Check if a user exists in Neo4j."""
+        with self.driver.session(database="neo4j") as session:
+            query = """
+                MATCH (u:User {username: $username})
+                RETURN u.id AS user_id
+            """
+            result = session.run(query, username=username).single()
+            return result is not None
+
+    def get_pipeline_components_by_hash(
+        self, pipeline_hash: str, username: str
+    ) -> List[Dict[str, object]]:
+        """
+        Traverse entire pipeline graph using DFS to get all connected components.
+        Only follows paths within the same pipeline.
+
+        Args:
+            pipeline_hash: Single pipeline name/hash to load
+            username: Username to validate permissions
+
+        Returns:
+            List of component dictionaries with all necessary data
+        """
+        with self.driver.session(database="neo4j") as session:
+            # First find the starting component(s) owned by the user for this pipeline
+            start_query = """
+                MATCH (u:User {username: $username})-[:OWNS]->(start:Component)
+                WHERE start.pipeline_name = $pipeline_hash
+                RETURN start.id AS start_id
+            """
+            start_results = session.run(
+                query=start_query, pipeline_hash=pipeline_hash, username=username
+            ).data()
+
+            if not start_results:
+                return []
+
+            # Get all starting component IDs
+            start_ids = [record["start_id"] for record in start_results]
+
+            # Manual DFS traversal within the same pipeline
+            return self._dfs_traversal_same_pipeline(session, start_ids, pipeline_hash)
+
+    def _dfs_traversal_same_pipeline(
+        self, session: Any, start_ids: List[str], pipeline_hash: str
+    ) -> List[Dict[str, object]]:
+        """DFS traversal that only follows components in the same pipeline."""
+        visited = set()
+        components = []
+        stack = start_ids.copy()
+
+        while stack:
+            current_id = stack.pop()
+            if current_id in visited:
+                continue
+
+            visited.add(current_id)
+
+            # Get current node and its connections, but only within the same pipeline
+            query = """
+                MATCH (c {id: $component_id})
+                WHERE c:Component OR c:DocumentStore
+
+                // Get connections but filter by pipeline
+                OPTIONAL MATCH (c)-[:FLOWS_TO|READS_FROM|WRITES_TO]->(next)
+                WHERE (next:Component AND next.pipeline_name = $pipeline_hash)
+                   OR (next:DocumentStore AND next.pipeline_name = $pipeline_hash)
+
+                OPTIONAL MATCH (prev)-[:FLOWS_TO|READS_FROM|WRITES_TO]->(c)
+                WHERE (prev:Component AND prev.pipeline_name = $pipeline_hash)
+                   OR (prev:DocumentStore AND prev.pipeline_name = $pipeline_hash)
+
+                RETURN c,
+                       collect(DISTINCT next.id) AS next_components,
+                       collect(DISTINCT prev.id) AS prev_components,
+                       labels(c) AS node_labels
+            """
+
+            result = session.run(
+                query, component_id=current_id, pipeline_hash=pipeline_hash
+            ).single()
+            if result:
+                component_data = dict(result["c"])
+                next_components = result["next_components"]
+                prev_components = result["prev_components"]
+                node_labels = result["node_labels"]
+
+                # Only include if it belongs to our pipeline (or is a DocumentStore for our pipeline)
+                node_pipeline = component_data.get("pipeline_name")
+                if node_pipeline == pipeline_hash:
+                    component_data["next_components"] = next_components
+                    component_data["prev_components"] = prev_components
+                    component_data["node_labels"] = node_labels
+                    components.append(component_data)
+
+                    # Add unvisited connected components to stack (only same pipeline)
+                    for next_id in next_components:
+                        if next_id and next_id not in visited:
+                            stack.append(next_id)
+
+                    for prev_id in prev_components:
+                        if prev_id and prev_id not in visited:
+                            stack.append(prev_id)
+
+        return components

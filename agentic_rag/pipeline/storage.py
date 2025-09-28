@@ -324,3 +324,41 @@ class GraphStorage:
             connections.append((prev_component.name, current_component.name))
 
         return connections
+
+    def load_pipeline_by_hashes(
+        self, pipeline_hashes: List[str], username: str
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Retrieve components for each pipeline hash from Neo4j.
+
+        Args:
+            pipeline_hashes: List of pipeline names to load
+            username: Username for permissions
+
+        Returns:
+            Dictionary mapping pipeline names to their component data
+        """
+        # 1. Validate username exists in Neo4j
+        if not self.graph_store.validate_user_exists(username):
+            raise ValueError(f"Username '{username}' not found in Neo4j")
+
+        pipelines_data: Dict[str, List[Dict[str, Any]]] = {}
+
+        # 2. Fetch components for each pipeline hash separately
+        for pipeline_hash in pipeline_hashes:
+            print(f"\n🔍 Fetching components for pipeline: {pipeline_hash}")
+
+            # Call Neo4j for this specific pipeline hash (single hash method)
+            component_data_list = self.graph_store.get_pipeline_components_by_hash(
+                pipeline_hash, username  # Single pipeline hash
+            )
+
+            print(f"   Found {len(component_data_list)} components")
+
+            if component_data_list:
+                pipelines_data[pipeline_hash] = component_data_list
+
+                # Print details for this pipeline
+                print(component_data_list)
+
+        return pipelines_data
