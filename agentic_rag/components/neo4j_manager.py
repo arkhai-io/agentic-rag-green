@@ -172,19 +172,17 @@ class GraphStore:
 
             visited.add(current_id)
 
-            # Get current node and its connections, but only within the same pipeline
+            # Get current node and ALL its connections (cross pipeline boundaries)
             query = """
                 MATCH (c {id: $component_id})
                 WHERE c:Component OR c:DocumentStore
 
-                // Get connections but filter by pipeline
+                // Get ALL connections (don't filter by pipeline)
                 OPTIONAL MATCH (c)-[:FLOWS_TO|READS_FROM|WRITES_TO]->(next)
-                WHERE (next:Component AND next.pipeline_name = $pipeline_hash)
-                   OR (next:DocumentStore AND next.pipeline_name = $pipeline_hash)
+                WHERE next:Component OR next:DocumentStore
 
                 OPTIONAL MATCH (prev)-[:FLOWS_TO|READS_FROM|WRITES_TO]->(c)
-                WHERE (prev:Component AND prev.pipeline_name = $pipeline_hash)
-                   OR (prev:DocumentStore AND prev.pipeline_name = $pipeline_hash)
+                WHERE prev:Component OR prev:DocumentStore
 
                 RETURN c,
                        collect(DISTINCT next.id) AS next_components,
@@ -201,21 +199,16 @@ class GraphStore:
                 prev_components = result["prev_components"]
                 node_labels = result["node_labels"]
 
-                # Only include if it belongs to our pipeline (or is a DocumentStore for our pipeline)
-                node_pipeline = component_data.get("pipeline_name")
-                if node_pipeline == pipeline_hash:
-                    component_data["next_components"] = next_components
-                    component_data["prev_components"] = prev_components
-                    component_data["node_labels"] = node_labels
-                    components.append(component_data)
+                # Include ALL components (allows crossing pipeline boundaries)
+                component_data["next_components"] = next_components
+                component_data["prev_components"] = prev_components
+                component_data["node_labels"] = node_labels
+                components.append(component_data)
 
-                    # Add unvisited connected components to stack (only same pipeline)
-                    for next_id in next_components:
-                        if next_id and next_id not in visited:
-                            stack.append(next_id)
-
-                    for prev_id in prev_components:
-                        if prev_id and prev_id not in visited:
-                            stack.append(prev_id)
+                # Only follow outgoing edges (next_components), not incoming (prev_components)
+                # This prevents traversing backwards into other pipelines
+                for next_id in next_components:
+                    if next_id and next_id not in visited:
+                        stack.append(next_id)
 
         return components

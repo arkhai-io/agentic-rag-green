@@ -233,38 +233,46 @@ class PipelineRunner:
 
         print(f"\nCreating Haystack pipeline for: {pipeline_name}")
 
-        # Add all components to pipeline (filter out DocumentStore nodes)
+        # Add all components from the graph (filter out only DocumentStore nodes)
+        # Components may come from connected pipelines (e.g., retrievers accessing other pipeline's stores)
         component_nodes = [
             comp
             for comp in components_data
             if "DocumentStore" not in comp.get("node_labels", [])
         ]
 
-        # Add components to pipeline
+        # Add components to pipeline using comp_id as unique names
         for comp_data in component_nodes:
             comp_id = comp_data.get("id")
             comp_name = comp_data.get("component_name")
 
             if comp_id in haystack_components:
-                pipeline.add_component(comp_name, haystack_components[comp_id])
-                print(f"  Added component: {comp_name}")
+                # Use comp_id as the component name to ensure uniqueness
+                pipeline.add_component(comp_id, haystack_components[comp_id])
+                print(f"  Added component: {comp_name} (id: {comp_id})")
 
-        # Connect components sequentially based on graph order
-        for i in range(len(component_nodes) - 1):
-            current_comp = component_nodes[i]
-            next_comp = component_nodes[i + 1]
+        # Connect components based on graph edges
+        for comp_data in component_nodes:
+            current_id = comp_data.get("id")
+            current_name = comp_data.get("component_name")
+            next_ids = comp_data.get("next_components", [])
 
-            current_name = current_comp.get("component_name")
-            next_name = next_comp.get("component_name")
-
-            if current_name and next_name:
-                try:
-                    pipeline.connect(current_name, next_name)
-                    print(f"  Connected: {current_name} -> {next_name}")
-                except Exception as e:
-                    print(
-                        f"  Warning: Could not connect {current_name} -> {next_name}: {e}"
-                    )
+            if current_id in haystack_components:
+                for next_id in next_ids:
+                    # Only connect if next component exists in haystack_components
+                    if next_id in haystack_components:
+                        next_data = next(
+                            (c for c in component_nodes if c.get("id") == next_id), None
+                        )
+                        if next_data:
+                            next_name = next_data.get("component_name")
+                            try:
+                                pipeline.connect(current_id, next_id)
+                                print(f"  Connected: {current_name} -> {next_name}")
+                            except Exception as e:
+                                print(
+                                    f"  Warning: Could not connect {current_name} -> {next_name}: {e}"
+                                )
 
         print(f"Pipeline '{pipeline_name}' created successfully\n")
 
