@@ -405,6 +405,46 @@ class TestMarkItDownPDFToDocument:
         except ImportError as e:
             pytest.skip(f"Dependencies not available: {e}")
 
+    def test_integration_with_pipeline(self):
+        """Test MarkItDown converter integration in a pipeline."""
+        try:
+            from reportlab.lib.pagesizes import letter
+            from reportlab.pdfgen import canvas
+
+            from agentic_rag.pipeline import PipelineRunner
+
+            # Create a test PDF
+            pdf_path = Path(self.temp_dir) / "pipeline_test.pdf"
+            c = canvas.Canvas(str(pdf_path), pagesize=letter)
+            c.drawString(100, 750, "# Pipeline Integration Test")
+            c.drawString(100, 730, "This PDF will be processed through the pipeline.")
+            c.drawString(100, 710, "## Section 1")
+            c.drawString(100, 690, "Content for testing pipeline integration.")
+            c.save()
+
+            # Create pipeline with MarkItDown converter
+            runner = PipelineRunner()
+            pipeline_spec = [
+                {"type": "CONVERTER.MARKITDOWN_PDF"},
+                {"type": "CHUNKER.MARKDOWN_AWARE"},
+            ]
+
+            config = {
+                "markitdown_pdf_converter": {"store_full_path": True},
+                "markdown_aware_chunker": {"chunk_size": 500, "chunk_overlap": 50},
+            }
+
+            runner.load_pipeline(pipeline_spec, "markitdown_test", config)
+
+            # Note: This is a simplified test - in real usage, you'd handle file loading differently
+            # For now, just verify the pipeline can be created with MarkItDown converter
+
+            print("✅ Pipeline integration test setup completed")
+            print("📝 Note: Full pipeline integration requires file loading components")
+
+        except ImportError as e:
+            pytest.skip(f"Dependencies not available: {e}")
+
     def test_component_available_in_registry(self):
         """Test that MarkItDown converter is available in component registry."""
         from agentic_rag import list_available_components
@@ -414,7 +454,30 @@ class TestMarkItDownPDFToDocument:
         assert "CONVERTER" in available
         assert "MARKITDOWN_PDF" in available["CONVERTER"]
 
-        print("MarkItDown converter found in registry")
+        print("✅ MarkItDown converter found in registry")
+
+    def test_error_handling_with_markitdown_converter(self):
+        """Test error handling in pipeline context."""
+        try:
+            from agentic_rag import PipelineFactory
+
+            factory = PipelineFactory()
+
+            # Create pipeline with MarkItDown converter
+            pipeline_spec = [{"type": "CONVERTER.MARKITDOWN_PDF"}]
+
+            spec, pipeline = factory.create_pipeline_from_spec(
+                pipeline_spec, "markitdown_error_test"
+            )
+
+            assert spec.name == "markitdown_error_test"
+            assert len(spec.components) == 1
+            assert spec.components[0].name == "markitdown_pdf_converter"
+
+            print("✅ MarkItDown converter pipeline creation successful")
+
+        except ImportError as e:
+            pytest.skip(f"Dependencies not available: {e}")
 
 
 if __name__ == "__main__":

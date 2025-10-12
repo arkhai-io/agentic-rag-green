@@ -5,7 +5,7 @@ ARCHITECTURE:
 - Runner: Load pipelines from Neo4j and execute (runtime)
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from ..components import GraphStore
 
@@ -24,12 +24,12 @@ class PipelineRunner:
             graph_store: GraphStore for loading pipelines from Neo4j
         """
         self.graph_store = graph_store
-        self._active_pipeline_graph: Optional[Tuple[Any, Any]] = (
-            None  # Graph representation from Neo4j
-        )
-        self._active_pipeline: Optional[Dict[str, Any]] = (
-            None  # Runtime Haystack components
-        )
+        # Graph representations from Neo4j for multiple pipelines
+        self._pipeline_graphs: Dict[str, List[Dict[str, Any]]] = {}
+        # Haystack components by pipeline (not yet connected)
+        self._haystack_components_by_pipeline: Dict[str, Dict[str, Any]] = {}
+        # Actual Haystack Pipeline objects (connected and ready to run)
+        self._haystack_pipelines: Dict[str, Any] = {}
 
     def load_pipeline_graph(self, pipeline_hashes: List[str], username: str) -> None:
         """
@@ -62,39 +62,32 @@ class PipelineRunner:
             pipeline_hashes, username
         )
 
-        # Store the graph representation - call build_haystack_components_from_graph() to build runtime components
-        self._active_pipeline_graph = (pipeline_hashes[0], pipelines_data)
+        # Store the graph representations for all loaded pipelines
+        self._pipeline_graphs.update(pipelines_data)
 
-    def build_haystack_components_from_graph(
-        self, pipeline_name: str
-    ) -> Dict[str, Any]:
+    def build_haystack_components_from_graph(self, pipeline_name: str) -> None:
         """
         Build runtime Haystack components from loaded pipeline graph data.
 
         Args:
             pipeline_name: Name of the pipeline to build components for
 
-        Returns:
-            Dictionary mapping component IDs to instantiated Haystack components
-
         Raises:
             RuntimeError: If no pipeline graph is loaded
             ValueError: If pipeline name not found in loaded data
         """
-        if self._active_pipeline_graph is None:
+        if not self._pipeline_graphs:
             raise RuntimeError(
-                "No pipeline graph loaded. Call load_pipeline_graph() first."
+                "No pipeline graphs loaded. Call load_pipeline_graph() first."
             )
 
-        _, pipelines_data = self._active_pipeline_graph
-
-        if pipeline_name not in pipelines_data:
+        if pipeline_name not in self._pipeline_graphs:
             raise ValueError(
                 f"Pipeline '{pipeline_name}' not found in loaded data. "
-                f"Available: {list(pipelines_data.keys())}"
+                f"Available: {list(self._pipeline_graphs.keys())}"
             )
 
-        components_data = pipelines_data[pipeline_name]
+        components_data = self._pipeline_graphs[pipeline_name]
 
         # Import registry to look up component specs
         from ..components import get_default_registry
@@ -118,7 +111,7 @@ class PipelineRunner:
             comp_name = comp_data.get("component_name")
             config_json = comp_data.get("component_config_json", "{}")
 
-            if not comp_name:
+            if not comp_name or not comp_id:
                 continue
 
             try:
@@ -157,7 +150,78 @@ class PipelineRunner:
 
         print(f"Built {len(haystack_components)} components\n")
 
-        # Store the runtime components as the active pipeline
-        self._active_pipeline = haystack_components
+        # Store the components for this pipeline
+        self._haystack_components_by_pipeline[pipeline_name] = haystack_components
 
-        return haystack_components
+    def create_haystack_pipeline(self, pipeline_name: str) -> Any:
+        """
+        Create an actual Haystack Pipeline from components by connecting them sequentially.
+
+        Args:
+            pipeline_name: Name of the pipeline to create
+
+        Returns:
+            Connected Haystack Pipeline object ready to run
+
+        Raises:
+            RuntimeError: If components haven't been built yet
+        """
+        from haystack import Pipeline
+
+        if pipeline_name not in self._haystack_components_by_pipeline:
+            raise RuntimeError(
+                f"Components for pipeline '{pipeline_name}' not built yet. "
+                f"Call build_haystack_components_from_graph() first."
+            )
+
+        # Get the graph data to determine component order
+        if pipeline_name not in self._pipeline_graphs:
+            raise RuntimeError(f"Graph data for pipeline '{pipeline_name}' not found.")
+
+        components_data = self._pipeline_graphs[pipeline_name]
+        haystack_components = self._haystack_components_by_pipeline[pipeline_name]
+
+        # Create Haystack pipeline
+        pipeline = Pipeline()
+
+        print(f"\nCreating Haystack pipeline for: {pipeline_name}")
+
+        # Add all components to pipeline (filter out DocumentStore nodes)
+        component_nodes = [
+            comp
+            for comp in components_data
+            if "DocumentStore" not in comp.get("node_labels", [])
+        ]
+
+        # Add components to pipeline
+        for comp_data in component_nodes:
+            comp_id = comp_data.get("id")
+            comp_name = comp_data.get("component_name")
+
+            if comp_id in haystack_components:
+                pipeline.add_component(comp_name, haystack_components[comp_id])
+                print(f"  Added component: {comp_name}")
+
+        # Connect components sequentially based on graph order
+        for i in range(len(component_nodes) - 1):
+            current_comp = component_nodes[i]
+            next_comp = component_nodes[i + 1]
+
+            current_name = current_comp.get("component_name")
+            next_name = next_comp.get("component_name")
+
+            if current_name and next_name:
+                try:
+                    pipeline.connect(current_name, next_name)
+                    print(f"  Connected: {current_name} -> {next_name}")
+                except Exception as e:
+                    print(
+                        f"  Warning: Could not connect {current_name} -> {next_name}: {e}"
+                    )
+
+        print(f"Pipeline '{pipeline_name}' created successfully\n")
+
+        # Store the connected pipeline
+        self._haystack_pipelines[pipeline_name] = pipeline
+
+        return pipeline
