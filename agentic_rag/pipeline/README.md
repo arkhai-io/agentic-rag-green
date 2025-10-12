@@ -55,7 +55,7 @@ graph TB
 
 ## Usage Patterns
 
-### ✅ **Preferred: Build Once, Run Many**
+### **Preferred: Build Once, Run Many**
 
 ```python
 # 1. BUILD TIME - Create pipeline once
@@ -87,7 +87,7 @@ results1 = runner.run("indexing", {"documents": documents1})
 results2 = runner.run("indexing", {"documents": documents2})
 ```
 
-### ⚠️ **Legacy: Create at Runtime (Deprecated)**
+### **Legacy: Create at Runtime (Deprecated)**
 
 ```python
 # Creates graph every time - inefficient
