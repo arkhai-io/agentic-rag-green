@@ -2,7 +2,7 @@
 
 A flexible, component-based RAG (Retrieval-Augmented Generation) pipeline system built on Haystack 2.0. Create powerful document processing and retrieval pipelines with minimal configuration.
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
 ```mermaid
 graph TB
@@ -46,15 +46,15 @@ graph TB
     CONV --> FILES
 ```
 
-## ✨ Features
+## Features
 
-- **🔧 Component-based Architecture**: Modular pipeline components for converters, chunkers, embedders, retrievers, and generators
-- **🎯 Custom Components**: Built-in markdown-aware and semantic chunkers optimized for structured documents
-- **🗄️ Automatic Document Store Integration**: ChromaDB integration with local persistence and shared datastores
-- **🛡️ Type-safe Configuration**: Strongly typed component specifications and configurations
-- **🏭 Factory Pattern**: Dynamic pipeline creation from simple specifications
-- **⚡ Runtime Parameter Support**: Override component parameters at execution time
-- **🔄 End-to-end Workflows**: Complete indexing → retrieval → generation pipelines
+- **Component-based Architecture**: Modular pipeline components for converters, chunkers, embedders, retrievers, and generators
+- **Custom Components**: Built-in markdown-aware and semantic chunkers optimized for structured documents
+- **Automatic Document Store Integration**: ChromaDB integration with local persistence and shared datastores
+- **Type-safe Configuration**: Strongly typed component specifications and configurations
+- **Factory Pattern**: Dynamic pipeline creation from simple specifications
+- **Runtime Parameter Support**: Override component parameters at execution time
+- **End-to-end Workflows**: Complete indexing, retrieval, and generation pipelines
 
 ## Quick Start
 
@@ -82,12 +82,12 @@ flowchart LR
 ### Retrieval Pipeline
 ```mermaid
 flowchart LR
-    QUERY[🔍 Query] --> EMBED[Text Embedder]
+    QUERY[Query] --> EMBED[Text Embedder]
     EMBED --> RETR[Retriever]
     RETR --> DB[(ChromaDB)]
     DB --> RETR
     RETR --> GEN[Generator]
-    GEN --> RESP[📝 Response]
+    GEN --> RESP[Response]
 
     style QUERY fill:#e8f5e8
     style RESP fill:#fff3e0
@@ -123,7 +123,7 @@ results = runner.run("indexing", {"documents": documents})
 print(f"Indexed {results['processed_count']} documents")
 ```
 
-## 🧩 Available Components
+## Available Components
 
 ### Converters
 - **`CONVERTER.PDF`** - Standard PDF text extraction
@@ -150,7 +150,7 @@ print(f"Indexed {results['processed_count']} documents")
 ### Writers
 - **`WRITER.DOCUMENT_WRITER`** - Stores documents in ChromaDB with persistence
 
-## 🔍 Retrieval Example
+## Retrieval Example
 
 ```python
 # Create retrieval pipeline
@@ -171,7 +171,7 @@ results = runner.run("retrieval", {
 print(f"Found {len(results['results'])} relevant documents")
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 ```python
 config = {
@@ -190,7 +190,7 @@ config = {
 runner.load_pipeline(indexing_spec, "configured_pipeline", config)
 ```
 
-## 🔄 End-to-End RAG Workflow
+## End-to-End RAG Workflow
 
 ```python
 from agentic_rag import PipelineRunner
@@ -218,7 +218,7 @@ documents = [
 ]
 
 indexing_results = indexing_runner.run("indexing", {"documents": documents})
-print(f"✅ Indexed {indexing_results['processed_count']} documents")
+print(f"Indexed {indexing_results['processed_count']} documents")
 
 # Step 2: Search and retrieve
 retrieval_runner = PipelineRunner()

@@ -346,7 +346,7 @@ class GraphStorage:
 
         # 2. Fetch components for each pipeline hash separately
         for pipeline_hash in pipeline_hashes:
-            print(f"\n🔍 Fetching components for pipeline: {pipeline_hash}")
+            print(f"\nFetching components for pipeline: {pipeline_hash}")
 
             # Call Neo4j for this specific pipeline hash (single hash method)
             component_data_list = self.graph_store.get_pipeline_components_by_hash(

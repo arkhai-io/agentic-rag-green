@@ -3,17 +3,11 @@
 ARCHITECTURE:
 - Factory: Build pipelines once and store in Neo4j (creation time)
 - Runner: Load pipelines from Neo4j and execute (runtime)
-
-CURRENT STATE:
-- Legacy methods (load_pipeline) still create graphs - will be deprecated
-- New methods (load_from_graph) load from Neo4j - preferred approach
 """
 
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..components import GraphStore
-from ..types import PipelineSpec
-from .factory import PipelineFactory
 
 
 class PipelineRunner:
@@ -22,88 +16,24 @@ class PipelineRunner:
     def __init__(
         self,
         graph_store: Optional[GraphStore] = None,
-        factory: Optional[PipelineFactory] = None,
     ) -> None:
         """
         Initialize the pipeline runner.
 
         Args:
-            graph_store: Optional GraphStore for loading pipelines from Neo4j
-            factory: Optional PipelineFactory instance for legacy methods
+            graph_store: GraphStore for loading pipelines from Neo4j
         """
         self.graph_store = graph_store
-        self.factory = factory or PipelineFactory()  # For legacy methods
-        self._active_pipeline: Optional[Tuple[Any, Any]] = None
-
-    def load_pipeline(
-        self,
-        component_specs: List[Dict[str, str]],
-        pipeline_name: str,
-        config: Optional[Dict[str, Any]] = None,
-    ) -> None:
-        """
-        [LEGACY] Load a pipeline from component specifications.
-
-        NOTE: This method creates graphs at runtime - use load_from_graph() instead.
-
-        Args:
-            component_specs: List of component specifications
-                Example: [{"type": "CONVERTER.PDF"}, {"type": "CHUNKER.MARKDOWN_AWARE"}]
-            pipeline_name: Name for the pipeline
-            config: Optional configuration dict
-        """
-        # Create pipeline graph
-        spec = self.factory.build_pipeline_graph(component_specs, pipeline_name, config)
-
-        # Build Haystack pipeline for execution
-        if self.factory.graph_storage:
-            haystack_pipeline = self.factory.graph_storage.build_haystack_pipeline(spec)
-        else:
-            raise RuntimeError("No graph storage configured in factory")
-
-        self._active_pipeline = (spec, haystack_pipeline)
-
-    def load_pipeline_from_spec(
-        self, spec: PipelineSpec, haystack_pipeline: Any
-    ) -> None:
-        """
-        Load a pipeline from existing spec and Haystack pipeline.
-
-        Args:
-            spec: Pipeline specification
-            haystack_pipeline: Built Haystack pipeline
-        """
-        self._active_pipeline = (spec, haystack_pipeline)
-
-    def load_from_graph(self, pipeline_name: str) -> None:
-        """
-        [PREFERRED] Load a pipeline from Neo4j graph storage.
-
-        This is the preferred method - pipelines should be built once with Factory
-        and then loaded many times with this method.
-
-        Args:
-            pipeline_name: Name of the pipeline stored in Neo4j
-
-        Raises:
-            RuntimeError: If no graph store is configured
-            ValueError: If pipeline not found in graph
-        """
-        if not self.graph_store:
-            raise RuntimeError(
-                "No graph store configured. Pass GraphStore to constructor."
-            )
-
-        # TODO: Implement loading pipeline from Neo4j
-        # 1. Query Neo4j for pipeline components and connections
-        # 2. Reconstruct PipelineSpec from stored data
-        # 3. Build Haystack pipeline from loaded spec
-        # 4. Set self._active_pipeline
-        raise NotImplementedError("load_from_graph() not yet implemented")
+        self._active_pipeline_graph: Optional[Tuple[Any, Any]] = (
+            None  # Graph representation from Neo4j
+        )
+        self._active_pipeline: Optional[Dict[str, Any]] = (
+            None  # Runtime Haystack components
+        )
 
     def load_pipeline_graph(self, pipeline_hashes: List[str], username: str) -> None:
         """
-        [NEW] Load a pipeline from Neo4j using pipeline hashes and username.
+        Load a pipeline from Neo4j using pipeline hashes and username.
 
         This method loads pipelines by their hash identifiers and associates them
         with a specific user context.
@@ -132,129 +62,102 @@ class PipelineRunner:
             pipeline_hashes, username
         )
 
-        # For now, just store the raw data - full reconstruction can be added later
-        self._active_pipeline = (pipeline_hashes[0], pipelines_data)
+        # Store the graph representation - call build_haystack_components_from_graph() to build runtime components
+        self._active_pipeline_graph = (pipeline_hashes[0], pipelines_data)
 
-    def run(self, pipeline_type: str, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def build_haystack_components_from_graph(
+        self, pipeline_name: str
+    ) -> Dict[str, Any]:
         """
-        Run the active pipeline with the given inputs.
+        Build runtime Haystack components from loaded pipeline graph data.
 
         Args:
-            pipeline_type: Type of pipeline execution ("indexing" or "retrieval")
-            inputs: Input data for the pipeline
-                For indexing: {"documents": [Document(...), ...]}
-                For retrieval: {"query": "search query", "top_k": 5}
+            pipeline_name: Name of the pipeline to build components for
 
         Returns:
-            Pipeline execution results
+            Dictionary mapping component IDs to instantiated Haystack components
 
         Raises:
-            RuntimeError: If no pipeline is loaded
-            ValueError: If inputs are invalid or pipeline type unsupported
+            RuntimeError: If no pipeline graph is loaded
+            ValueError: If pipeline name not found in loaded data
         """
-        if self._active_pipeline is None:
-            raise RuntimeError("No pipeline loaded. Call load_pipeline() first.")
-
-        spec, haystack_pipeline = self._active_pipeline
-
-        if pipeline_type == "indexing":
-            return self._run_indexing_pipeline(spec, haystack_pipeline, inputs)
-        elif pipeline_type == "retrieval":
-            return self._run_retrieval_pipeline(spec, haystack_pipeline, inputs)
-        else:
-            raise ValueError(
-                f"Unsupported pipeline type: {pipeline_type}. Use 'indexing' or 'retrieval'"
+        if self._active_pipeline_graph is None:
+            raise RuntimeError(
+                "No pipeline graph loaded. Call load_pipeline_graph() first."
             )
 
-    def _run_indexing_pipeline(
-        self, spec: PipelineSpec, haystack_pipeline: Any, inputs: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Run an indexing pipeline to process and store documents.
+        _, pipelines_data = self._active_pipeline_graph
 
-        Args:
-            spec: Pipeline specification
-            haystack_pipeline: Haystack pipeline instance
-            inputs: Input data with documents or file paths
+        if pipeline_name not in pipelines_data:
+            raise ValueError(
+                f"Pipeline '{pipeline_name}' not found in loaded data. "
+                f"Available: {list(pipelines_data.keys())}"
+            )
 
-        Returns:
-            Results from the indexing pipeline
-        """
-        try:
-            # Handle direct document input only
-            if "documents" not in inputs:
-                raise ValueError(
-                    "Indexing inputs must contain 'documents' key with list of Document objects"
-                )
+        components_data = pipelines_data[pipeline_name]
 
-            documents = inputs["documents"]
-            if not isinstance(documents, list):
-                raise ValueError("'documents' must be a list of Document objects")
+        # Import registry to look up component specs
+        from ..components import get_default_registry
 
-            # Map documents to the first component in the pipeline
-            pipeline_inputs = {spec.components[0].name: {"documents": documents}}
+        registry = get_default_registry()
 
-            # Execute the pipeline
-            results = haystack_pipeline.run(data=pipeline_inputs)
+        # Build components dynamically
+        haystack_components = {}
 
-            return {
-                "success": True,
-                "results": results,
-                "processed_count": len(documents),
-            }
+        print(f"\nBuilding Haystack components for: {pipeline_name}")
 
-        except Exception as e:
-            return {"success": False, "error": str(e), "error_type": type(e).__name__}
+        for comp_data in components_data:
+            comp_id = comp_data.get("id")
+            node_labels = comp_data.get("node_labels", [])
 
-    def _run_retrieval_pipeline(
-        self, spec: PipelineSpec, haystack_pipeline: Any, inputs: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Run a retrieval pipeline to search for relevant documents.
+            # Skip DocumentStore nodes - they're created automatically by components
+            if "DocumentStore" in node_labels:
+                continue
 
-        Args:
-            spec: Pipeline specification
-            haystack_pipeline: Haystack pipeline instance
-            inputs: Input data with query and search parameters
+            # Handle Component nodes
+            comp_name = comp_data.get("component_name")
+            config_json = comp_data.get("component_config_json", "{}")
 
-        Returns:
-            Results from the retrieval pipeline
-        """
-        try:
-            # Handle query input - required for retrieval
-            if "query" not in inputs:
-                raise ValueError(
-                    "Retrieval inputs must contain 'query' key with search query string"
-                )
+            if not comp_name:
+                continue
 
-            query = inputs["query"]
-            if not isinstance(query, str):
-                raise ValueError("'query' must be a string")
+            try:
+                # Get the base component spec from registry
+                base_spec = registry.get_component_spec(comp_name)
+                if not base_spec:
+                    print(f"  Error: Component '{comp_name}' not found in registry")
+                    continue
 
-            # Extract optional parameters
-            top_k = inputs.get("top_k", 10)  # Default to 10 results
-            filters = inputs.get("filters", None)
+                # Parse and apply configuration
+                import json
+                from copy import deepcopy
 
-            # Build pipeline inputs with all component parameters
-            # Note: SentenceTransformersTextEmbedder expects 'text' parameter, not 'query'
-            pipeline_inputs = {spec.components[0].name: {"text": query}}
+                from ..types import create_haystack_component
 
-            # Find retriever component and add its parameters to pipeline_inputs
-            for component in spec.components:
-                if component.component_type.value == "retriever":
-                    component_params = {}
-                    if top_k is not None:
-                        component_params["top_k"] = top_k
-                    if filters is not None:
-                        component_params["filters"] = filters
-                    if component_params:
-                        pipeline_inputs[component.name] = component_params
-                    break
+                config = json.loads(config_json) if config_json != "{}" else {}
 
-            # Execute the pipeline
-            results = haystack_pipeline.run(data=pipeline_inputs)
+                # Create a copy to avoid mutating the registry's spec
+                spec_copy = deepcopy(base_spec)
 
-            return {"success": True, "results": results, "query": query}
+                # Configure with loaded config
+                if config:
+                    configured_spec = spec_copy.configure(config)
+                else:
+                    configured_spec = spec_copy
 
-        except Exception as e:
-            return {"success": False, "error": str(e), "error_type": type(e).__name__}
+                # Instantiate the actual Haystack component
+                # For writers/retrievers, create_haystack_component will handle document store creation
+                haystack_component = create_haystack_component(configured_spec)
+                haystack_components[comp_id] = haystack_component
+
+                print(f"  Built {comp_name} ({type(haystack_component).__name__})")
+
+            except Exception as e:
+                print(f"  Error building {comp_name}: {e}")
+
+        print(f"Built {len(haystack_components)} components\n")
+
+        # Store the runtime components as the active pipeline
+        self._active_pipeline = haystack_components
+
+        return haystack_components

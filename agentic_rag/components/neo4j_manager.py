@@ -39,9 +39,9 @@ class GraphStore:
         # Verify connectivity like the working example
         try:
             self.driver.verify_connectivity()
-            print("✅ GraphStore connected successfully!")
+            print("GraphStore connected successfully!")
         except Exception as e:
-            print(f"❌ GraphStore connection failed: {e}")
+            print(f"GraphStore connection failed: {e}")
             raise
 
     def close(self) -> None:
