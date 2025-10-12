@@ -8,6 +8,7 @@ ARCHITECTURE:
 from typing import Any, Dict, List, Optional
 
 from ..components import GraphStore
+from ..types import PipelineUsage
 
 
 class PipelineRunner:
@@ -16,20 +17,66 @@ class PipelineRunner:
     def __init__(
         self,
         graph_store: Optional[GraphStore] = None,
+        username: Optional[str] = None,
+        pipeline_names: Optional[List[str]] = None,
     ) -> None:
         """
         Initialize the pipeline runner.
 
         Args:
             graph_store: GraphStore for loading pipelines from Neo4j
+            username: Username to load pipelines for (auto-loads pipelines if provided)
+            pipeline_names: List of pipeline names to load (e.g., ['pdf_indexing_pipeline'])
+                          If None and username is provided, loads all pipelines for user
         """
         self.graph_store = graph_store
+        self.username = username
+
         # Graph representations from Neo4j for multiple pipelines
         self._pipeline_graphs: Dict[str, List[Dict[str, Any]]] = {}
         # Haystack components by pipeline (not yet connected)
         self._haystack_components_by_pipeline: Dict[str, Dict[str, Any]] = {}
         # Actual Haystack Pipeline objects (connected and ready to run)
         self._haystack_pipelines: Dict[str, Any] = {}
+
+        # Auto-load and build pipelines if username is provided
+        if username and graph_store:
+            self._auto_load_pipelines(pipeline_names)
+
+    def _auto_load_pipelines(self, pipeline_names: Optional[List[str]] = None) -> None:
+        """
+        Automatically load and build pipelines for the user.
+
+        Args:
+            pipeline_names: List of pipeline names to load. If None, loads all user pipelines.
+        """
+        if not self.username:
+            raise ValueError("Username is required for auto-loading pipelines")
+
+        if not pipeline_names:
+            # If no specific pipelines provided, try common pipeline names
+            pipeline_names = ["pdf_indexing_pipeline", "pdf_retrieval_pipeline"]
+
+        print(f"Auto-loading pipelines for user: {self.username}")
+        print(f"Pipeline names: {pipeline_names}\n")
+
+        for pipeline_name in pipeline_names:
+            try:
+                # Load pipeline graph
+                self.load_pipeline_graph([pipeline_name], self.username)
+
+                # Build Haystack components
+                self.build_haystack_components_from_graph(pipeline_name)
+
+                # Create connected pipeline
+                self.create_haystack_pipeline(pipeline_name)
+
+                print(f"Successfully loaded: {pipeline_name}")
+
+            except Exception as e:
+                print(f"Warning: Could not load {pipeline_name}: {e}")
+
+        print(f"\nTotal pipelines loaded: {len(self._haystack_pipelines)}\n")
 
     def load_pipeline_graph(self, pipeline_hashes: List[str], username: str) -> None:
         """
@@ -225,3 +272,87 @@ class PipelineRunner:
         self._haystack_pipelines[pipeline_name] = pipeline
 
         return pipeline
+
+    def run(self, pipeline_name: str, type: str, **kwargs: Any) -> Any:
+        """
+        Run a pipeline by name, dispatching to the appropriate execution method.
+
+        Args:
+            pipeline_name: Name of the pipeline to run (e.g., 'pdf_indexing_pipeline', 'pdf_retrieval_pipeline')
+            type: Pipeline type - "indexing" or "retrieval"
+            **kwargs: Pipeline-specific arguments
+
+        Returns:
+            Pipeline execution results
+        """
+        if type == "indexing" or type == PipelineUsage.INDEXING.value:
+            return self._run_indexing_pipeline(pipeline_name, **kwargs)
+        elif type == "retrieval" or type == PipelineUsage.RETRIEVAL.value:
+            return self._run_retrieval_pipeline(pipeline_name, **kwargs)
+        else:
+            raise ValueError(
+                f"Unknown pipeline type: {type}. " "Must be 'indexing' or 'retrieval'"
+            )
+
+    def _run_indexing_pipeline(self, pipeline_name: str, **kwargs: Any) -> Any:
+        """
+        Execute an indexing pipeline.
+
+        Args:
+            pipeline_name: Name of the indexing pipeline
+            **kwargs: Pipeline-specific arguments
+                - data_path: Path to directory containing PDFs (required)
+                - sources: Optional list of specific file paths to process
+
+        Returns:
+            Indexing results
+        """
+        from pathlib import Path
+
+        # Get the pipeline
+        if pipeline_name not in self._haystack_pipelines:
+            raise ValueError(
+                f"Pipeline '{pipeline_name}' not found. "
+                f"Call create_haystack_pipeline('{pipeline_name}') first."
+            )
+
+        pipeline = self._haystack_pipelines[pipeline_name]
+
+        # Get data path from kwargs
+        data_path = kwargs.get("data_path")
+        if not data_path:
+            raise ValueError("data_path is required in kwargs")
+
+        data_dir = Path(data_path)
+        if not data_dir.exists():
+            raise FileNotFoundError(f"Data directory not found: {data_dir}")
+
+        # Get PDF files from the directory
+        pdf_files = list(data_dir.glob("*.pdf"))
+        if not pdf_files:
+            raise FileNotFoundError(f"No PDF files found in {data_dir}")
+
+        print(f"\nRunning indexing pipeline: {pipeline_name}")
+        print(f"Found {len(pdf_files)} PDF files in {data_dir}")
+
+        # Run the pipeline with the PDF sources
+        sources = [str(pdf_file) for pdf_file in pdf_files]
+        result = pipeline.run({"sources": sources})
+
+        print(f"Indexing completed for {len(pdf_files)} files\n")
+
+        return result
+
+    def _run_retrieval_pipeline(self, pipeline_name: str, **kwargs: Any) -> Any:
+        """
+        Execute a retrieval pipeline.
+
+        Args:
+            pipeline_name: Name of the retrieval pipeline
+            **kwargs: Pipeline-specific arguments (e.g., query, top_k)
+
+        Returns:
+            Retrieval results
+        """
+        # TODO: Implement retrieval pipeline execution
+        pass
