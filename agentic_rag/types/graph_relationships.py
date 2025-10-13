@@ -19,6 +19,10 @@ class GraphRelationship(Enum):
     # Pipeline to Component relationships
     CONTAINS = "CONTAINS"  # Pipeline contains components
 
+    # DataPiece transformation relationships (for InGate/OutGate)
+    TRANSFORMED_BY = "TRANSFORMED_BY"  # DataPiece transformed to another DataPiece
+    PROCESSED_BY = "PROCESSED_BY"  # DataPiece processed by Component
+
 
 def get_relationship_name(relationship: GraphRelationship) -> str:
     """Get the string name of a relationship for Neo4j queries."""
