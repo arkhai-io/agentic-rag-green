@@ -335,19 +335,24 @@ class PipelineRunner:
         if not data_dir.exists():
             raise FileNotFoundError(f"Data directory not found: {data_dir}")
 
-        # Get PDF files from the directory
-        pdf_files = list(data_dir.glob("*.pdf"))
-        if not pdf_files:
-            raise FileNotFoundError(f"No PDF files found in {data_dir}")
+        # Try to detect file type based on pipeline name or find any supported files
+        input_files: List[Any] = []
+        file_patterns = ["*.pdf", "*.txt", "*.md", "*.docx", "*.html"]
+
+        for pattern in file_patterns:
+            input_files.extend(data_dir.glob(pattern))
+
+        if not input_files:
+            raise FileNotFoundError(f"No supported files found in {data_dir}")
 
         print(f"\nRunning indexing pipeline: {pipeline_name}")
-        print(f"Found {len(pdf_files)} PDF files in {data_dir}")
+        print(f"Found {len(input_files)} files in {data_dir}")
 
-        # Run the pipeline with the PDF sources
-        sources = [str(pdf_file) for pdf_file in pdf_files]
+        # Run the pipeline with the file sources
+        sources = [str(file_path) for file_path in input_files]
         result = pipeline.run({"sources": sources})
 
-        print(f"Indexing completed for {len(pdf_files)} files\n")
+        print(f"Indexing completed for {len(input_files)} files\n")
 
         return result
 

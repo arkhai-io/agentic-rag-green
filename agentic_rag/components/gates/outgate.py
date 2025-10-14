@@ -6,8 +6,11 @@ Simple flow:
 3. Create TRANSFORMED_BY edges connecting them
 """
 
+import hashlib
+import json
 from typing import Any, Dict, List, Optional
 
+from ...utils.ipfs_client import LighthouseClient
 from ..neo4j_manager import GraphStore
 
 
@@ -30,6 +33,7 @@ class OutGate:
         component_id: str,
         component_name: str,
         username: str,
+        ipfs_client: Optional[LighthouseClient] = None,
     ):
         """
         Initialize OutGate.
@@ -39,8 +43,13 @@ class OutGate:
             component_id: Component doing the transformation
             component_name: Human-readable name
             username: Data owner
+            ipfs_client: Optional Lighthouse IPFS client (creates one if not provided)
         """
-        ...
+        self.graph_store = graph_store
+        self.component_id = component_id
+        self.component_name = component_name
+        self.username = username
+        self.ipfs_client = ipfs_client or LighthouseClient()
 
     def store(
         self,
@@ -80,65 +89,133 @@ class OutGate:
             >>> # Multiple outputs
             >>> outgate.store(markdown, [chunk1, chunk2, chunk3], config)
         """
-        raise NotImplementedError("OutGate.store() not yet implemented")
+        # Hash config
+        config_hash = self.hash_config(component_config)
+
+        # Fingerprint input
+        input_fingerprint = self.fingerprint_data(input_data)
+
+        # Process all outputs in batch
+        output_records = []
+        for output_item in output_data:
+            # Upload to IPFS
+            ipfs_hash = self._upload_to_ipfs(output_item)
+
+            # Fingerprint output
+            output_fingerprint = self.fingerprint_data(output_item)
+
+            # Detect data type
+            data_type = type(output_item).__name__
+
+            output_records.append(
+                {
+                    "fingerprint": output_fingerprint,
+                    "ipfs_hash": ipfs_hash,
+                    "data_type": data_type,
+                }
+            )
+
+        # Store everything to Neo4j in one batch
+        self.graph_store.store_transformation_batch(
+            input_fingerprint=input_fingerprint,
+            input_ipfs_hash=self._upload_to_ipfs(input_data),
+            input_data_type=type(input_data).__name__,
+            output_records=output_records,
+            component_id=self.component_id,
+            component_name=self.component_name,
+            config_hash=config_hash,
+            username=self.username,
+            processing_time_ms=processing_time_ms,
+        )
+
+        return {
+            "input_fingerprint": input_fingerprint,
+            "output_fingerprints": [r["fingerprint"] for r in output_records],
+            "output_ipfs_hashes": [r["ipfs_hash"] for r in output_records],
+        }
 
     def fingerprint_data(self, data: Any) -> str:
         """Create SHA256 fingerprint of data."""
-        raise NotImplementedError("OutGate.fingerprint_data() not yet implemented")
+        data_str = self._serialize_for_fingerprint(data)
+        hash_obj = hashlib.sha256(data_str.encode("utf-8"))
+        return f"fp_{hash_obj.hexdigest()[:16]}"
 
     def hash_config(self, config: Dict[str, Any]) -> str:
         """Create hash of component configuration."""
-        raise NotImplementedError("OutGate.hash_config() not yet implemented")
+        # Performance-only settings that don't affect output
+        PERF_ONLY_KEYS = {
+            "batch_size",
+            "num_workers",
+            "device",
+            "show_progress",
+            "verbose",
+            "debug",
+            "workers",
+            "threads",
+        }
+
+        # Filter to semantic config only
+        semantic_config = {k: v for k, v in config.items() if k not in PERF_ONLY_KEYS}
+
+        # Sort keys for stability and create JSON
+        config_str = json.dumps(semantic_config, sort_keys=True, separators=(",", ":"))
+
+        # Hash and return short version
+        hash_obj = hashlib.sha256(config_str.encode("utf-8"))
+        return f"cfg_{hash_obj.hexdigest()[:16]}"
 
     def _upload_to_ipfs(self, data: Any) -> str:
         """
-        Upload data to IPFS and return CID.
+        Upload data to IPFS via Lighthouse and return CID.
 
-        Placeholder for now - actual IPFS SDK integration pending.
-        """
-        raise NotImplementedError("IPFS integration not yet implemented")
+        Args:
+            data: Any data type (Document, dict, str, bytes, etc.)
 
-    def _create_data_piece_node(
-        self,
-        fingerprint: str,
-        ipfs_hash: str,
-        data_type: str,
-        content_preview: Optional[str] = None,
-    ) -> None:
+        Returns:
+            IPFS CID (hash)
         """
-        Create DataPiece node in Neo4j.
+        result = self.ipfs_client.upload_any(data)
+        ipfs_hash: str = result["Hash"]
+        return ipfs_hash
 
-        Cypher:
-            MERGE (d:DataPiece {fingerprint: $fp})
-            ON CREATE SET
-                d.ipfs_hash = $ipfs_hash,
-                d.type = $type,
-                d.username = $username,
-                d.content_preview = $preview,
-                d.created_at = datetime()
+    def _serialize_for_fingerprint(self, data: Any) -> str:
         """
-        ...
+        Serialize data to string for hashing.
 
-    def _create_transformation_edge(
-        self,
-        input_fingerprint: str,
-        output_fingerprint: str,
-        config_hash: str,
-        processing_time_ms: Optional[int] = None,
-    ) -> None:
-        """
-        Create TRANSFORMED_BY edge.
+        Args:
+            data: Data to serialize
 
-        Cypher:
-            MATCH (input:DataPiece {fingerprint: $input_fp})
-            MATCH (output:DataPiece {fingerprint: $output_fp})
-            MERGE (input)-[t:TRANSFORMED_BY {
-                component_id: $comp_id,
-                config_hash: $cfg_hash
-            }]->(output)
-            ON CREATE SET
-                t.component_name = $comp_name,
-                t.processing_time_ms = $proc_time,
-                t.created_at = datetime()
+        Returns:
+            String representation for hashing
         """
-        ...
+        # Check for embedding first (embedder output)
+        if hasattr(data, "embedding") and data.embedding is not None:
+            # Hash the embedding vector (the new data added by embedder)
+            import numpy as np
+
+            if isinstance(data.embedding, np.ndarray):
+                return hashlib.sha256(data.embedding.tobytes()).hexdigest()
+            else:
+                # List of floats
+                return str(data.embedding)
+
+        # Handle content attribute (Document, etc.)
+        if hasattr(data, "content"):
+            return str(data.content) if data.content else ""
+
+        # Handle data attribute (ByteStream)
+        if hasattr(data, "data"):
+            if isinstance(data.data, bytes):
+                return hashlib.sha256(data.data).hexdigest()
+            return str(data.data)
+
+        # Handle lists
+        if isinstance(data, list):
+            return "|".join(str(item) for item in data)
+
+        # Handle dicts
+        if isinstance(data, dict):
+            return json.dumps(data, sort_keys=True)
+
+        # Basic types: just string it
+        return str(data)

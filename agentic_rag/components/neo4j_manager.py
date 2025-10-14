@@ -205,10 +205,147 @@ class GraphStore:
                 component_data["node_labels"] = node_labels
                 components.append(component_data)
 
-                # Only follow outgoing edges (next_components), not incoming (prev_components)
-                # This prevents traversing backwards into other pipelines
-                for next_id in next_components:
-                    if next_id and next_id not in visited:
-                        stack.append(next_id)
+            # Only follow outgoing edges (next_components), not incoming (prev_components)
+            # This prevents traversing backwards into other pipelines
+            for next_id in next_components:
+                if next_id and next_id not in visited:
+                    stack.append(next_id)
 
         return components
+
+    def lookup_cached_transformations_batch(
+        self, input_fingerprints: List[str], component_id: str, config_hash: str
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Look up cached transformation results for multiple inputs in one query.
+
+        Args:
+            input_fingerprints: List of input data fingerprints
+            component_id: ID of the component that did the transformation
+            config_hash: Hash of component configuration
+
+        Returns:
+            Dict mapping input_fingerprint -> list of output data dicts
+            {
+                "fp_abc123": [
+                    {fingerprint, ipfs_hash, data_type, username},
+                    ...
+                ],
+                "fp_xyz789": [...],
+                ...
+            }
+
+        Query:
+            UNWIND $fingerprints AS fp
+            MATCH (input:DataPiece {fingerprint: fp})
+                  -[:TRANSFORMED_BY {component_id: $cid, config_hash: $ch}]->
+                  (output:DataPiece)
+            RETURN fp, collect(output) AS outputs
+        """
+        with self.driver.session(database="neo4j") as session:
+            query = """
+                UNWIND $fingerprints AS fp
+                OPTIONAL MATCH (input:DataPiece {fingerprint: fp})
+                      -[t:TRANSFORMED_BY {
+                          component_id: $component_id,
+                          config_hash: $config_hash
+                      }]->
+                      (output:DataPiece)
+                WITH fp, collect({
+                    fingerprint: output.fingerprint,
+                    ipfs_hash: output.ipfs_hash,
+                    data_type: output.data_type,
+                    username: output.username
+                }) AS outputs
+                WHERE size(outputs) > 0 AND outputs[0].fingerprint IS NOT NULL
+                RETURN fp, outputs
+            """
+
+            results = session.run(
+                query,
+                fingerprints=input_fingerprints,
+                component_id=component_id,
+                config_hash=config_hash,
+            ).data()
+
+            # Convert to dict
+            cache_map = {}
+            for record in results:
+                cache_map[record["fp"]] = record["outputs"]
+
+            return cache_map
+
+    def store_transformation_batch(
+        self,
+        input_fingerprint: str,
+        input_ipfs_hash: str,
+        input_data_type: str,
+        output_records: List[Dict[str, Any]],
+        component_id: str,
+        component_name: str,
+        config_hash: str,
+        username: str,
+        processing_time_ms: Optional[int] = None,
+    ) -> None:
+        """
+        Store a 1→N transformation in Neo4j.
+
+        Creates:
+        - Input DataPiece node (if not exists)
+        - Output DataPiece nodes for all outputs
+        - TRANSFORMED_BY edges from input to each output
+
+        Args:
+            input_fingerprint: Fingerprint of input data
+            input_ipfs_hash: IPFS hash of input data
+            input_data_type: Type of input data
+            output_records: List of {fingerprint, ipfs_hash, data_type}
+            component_id: ID of component that did transformation
+            component_name: Name of component
+            config_hash: Hash of component config
+            username: User who owns this data
+            processing_time_ms: Optional processing time
+        """
+        with self.driver.session(database="neo4j") as session:
+            query = """
+                // Create or get input DataPiece
+                MERGE (input:DataPiece {fingerprint: $input_fingerprint})
+                ON CREATE SET
+                    input.ipfs_hash = $input_ipfs_hash,
+                    input.data_type = $input_data_type,
+                    input.username = $username,
+                    input.created_at = datetime()
+
+                // Create output DataPieces and edges
+                WITH input
+                UNWIND $output_records AS output
+                MERGE (out:DataPiece {fingerprint: output.fingerprint})
+                ON CREATE SET
+                    out.ipfs_hash = output.ipfs_hash,
+                    out.data_type = output.data_type,
+                    out.username = $username,
+                    out.created_at = datetime()
+
+                // Create TRANSFORMED_BY edge
+                MERGE (input)-[t:TRANSFORMED_BY {
+                    component_id: $component_id,
+                    config_hash: $config_hash
+                }]->(out)
+                ON CREATE SET
+                    t.component_name = $component_name,
+                    t.processing_time_ms = $processing_time_ms,
+                    t.created_at = datetime()
+            """
+
+            session.run(
+                query,
+                input_fingerprint=input_fingerprint,
+                input_ipfs_hash=input_ipfs_hash,
+                input_data_type=input_data_type,
+                output_records=output_records,
+                component_id=component_id,
+                component_name=component_name,
+                config_hash=config_hash,
+                username=username,
+                processing_time_ms=processing_time_ms,
+            ).consume()
