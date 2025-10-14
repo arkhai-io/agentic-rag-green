@@ -29,7 +29,10 @@ from .graph_relationships import (
 from .node_types import (
     ComponentNode,
     ComponentRelationship,
+    DataPiece,
     DocumentStoreNode,
+    ProcessedByRelationship,
+    TransformedByRelationship,
     UserNode,
 )
 from .pipeline_spec import PipelineSpec, PipelineType
@@ -47,6 +50,10 @@ __all__ = [
     "ComponentRelationship",
     "DocumentStoreNode",
     "UserNode",
+    # DataPiece types (for InGate/OutGate caching)
+    "DataPiece",
+    "TransformedByRelationship",
+    "ProcessedByRelationship",
     # Component enums
     "CONVERTER",
     "CHUNKER",
