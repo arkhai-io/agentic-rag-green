@@ -182,19 +182,40 @@ class GraphStorage:
 
                             if target_spec:
 
-                                # Use indexing pipeline, retrieval pipeline, and component type in ID
-                                component_name = (
-                                    f"{spec.name}_{substitution.target_component}"
-                                )
+                                # Use unique ID for this retriever instance
                                 component_id = f"{comp_pipeline}_{substitution.target_component}_for_{spec.name}"
 
-                                # Always use empty config for substituted components
-                                config_json = "{}"
+                                # component_name must match registry name exactly!
+                                component_name = (
+                                    substitution.target_component
+                                )  # e.g., "chroma_embedding_retriever"
+
+                                # Copy config from writer (especially root_dir for ChromaDB)
+                                if substitution.preserve_config:
+                                    config_json = str(
+                                        comp.get("component_config_json", "{}")
+                                    )
+                                else:
+                                    # Extract just the root_dir for document store location
+                                    import json as json_module
+
+                                    writer_config_json = str(
+                                        comp.get("component_config_json", "{}")
+                                    )
+                                    writer_config = json_module.loads(
+                                        writer_config_json
+                                    )
+                                    retriever_config = {}
+                                    if "root_dir" in writer_config:
+                                        retriever_config["root_dir"] = writer_config[
+                                            "root_dir"
+                                        ]
+                                    config_json = json_module.dumps(retriever_config)
 
                                 # Create substituted component dictionary directly
                                 substituted_dict = {
                                     "id": component_id,
-                                    "component_name": component_name,
+                                    "component_name": component_name,  # Registry name
                                     "pipeline_name": spec.name,
                                     "version": "1.0.0",
                                     "author": "test_user",
