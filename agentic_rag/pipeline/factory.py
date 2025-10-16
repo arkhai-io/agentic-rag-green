@@ -10,9 +10,12 @@ from .storage import GraphStorage
 class PipelineFactory:
     """Factory for creating pipelines from component specifications."""
 
-    def __init__(self, graph_store: Optional[GraphStore] = None) -> None:
+    def __init__(
+        self, graph_store: Optional[GraphStore] = None, username: str = "test_user"
+    ) -> None:
         self.registry = get_default_registry()
         self.graph_store = graph_store
+        self.username = username
         self.graph_storage = (
             GraphStorage(graph_store, self.registry) if graph_store else None
         )
@@ -21,6 +24,7 @@ class PipelineFactory:
         self,
         pipeline_specs: List[List[Dict[str, str]]],
         configs: Optional[List[Dict[str, Any]]] = None,
+        username: Optional[str] = None,
     ) -> List[PipelineSpec]:
         """
         Build multiple pipeline graphs from dict-based specifications.
@@ -29,6 +33,7 @@ class PipelineFactory:
             pipeline_specs: List of component specifications as dicts.
                 Example: [[{"type": "CONVERTER.PDF"}, {"type": "CHUNKER.RECURSIVE"}]]
             configs: Optional list of configuration dicts for each pipeline
+            username: Username for pipeline ownership (defaults to factory's username)
 
         Returns:
             List of PipelineSpec objects with graph representations built
@@ -39,6 +44,9 @@ class PipelineFactory:
         if len(configs) != len(pipeline_specs):
             raise ValueError("Number of configs must match number of pipeline specs")
 
+        # Use provided username or fall back to factory's username
+        effective_username = username or self.username
+
         pipeline_specs_list = []
 
         for i, (spec, config) in enumerate(zip(pipeline_specs, configs)):
@@ -48,7 +56,9 @@ class PipelineFactory:
                 )
 
             pipeline_name = f"pipeline_{i}"
-            pipeline_spec = self.build_pipeline_graph(spec, pipeline_name, config)
+            pipeline_spec = self.build_pipeline_graph(
+                spec, pipeline_name, config, effective_username
+            )
             pipeline_specs_list.append(pipeline_spec)
 
         return pipeline_specs_list
@@ -58,6 +68,7 @@ class PipelineFactory:
         component_specs: List[Dict[str, str]],
         pipeline_name: str,
         config: Optional[Dict[str, Any]] = None,
+        username: Optional[str] = None,
     ) -> PipelineSpec:
         """
         Build a single pipeline graph from dict-based component specifications.
@@ -67,11 +78,15 @@ class PipelineFactory:
                 Example: [{"type": "CONVERTER.PDF"}, {"type": "CHUNKER.RECURSIVE"}]
             pipeline_name: Name for the pipeline
             config: Optional configuration dict
+            username: Username for pipeline ownership (defaults to factory's username)
 
         Returns:
             PipelineSpec with graph representation built
         """
         config = config or {}
+
+        # Use provided username or fall back to factory's username
+        effective_username = username or self.username
 
         # Parse component specifications and validate
         component_specs_list = []
@@ -95,7 +110,7 @@ class PipelineFactory:
 
         # Build the graph representation (no Haystack pipeline)
         if self.graph_storage:
-            self.graph_storage.build_pipeline_graph(pipeline_spec)
+            self.graph_storage.build_pipeline_graph(pipeline_spec, effective_username)
         else:
             print("Warning: No graph store configured, pipeline graph not created")
 
