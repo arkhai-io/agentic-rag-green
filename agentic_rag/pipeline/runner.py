@@ -5,11 +5,13 @@ ARCHITECTURE:
 - Runner: Load pipelines from Neo4j and execute (runtime)
 """
 
+import time
 from typing import Any, Dict, List, Optional
 
 from ..components import GraphStore
 from ..types import PipelineUsage
 from ..utils.logger import configure_haystack_logging, get_logger
+from ..utils.metrics import MetricsCollector
 
 
 class PipelineRunner:
@@ -40,6 +42,7 @@ class PipelineRunner:
             if username
             else get_logger(__name__)
         )
+        self.metrics = MetricsCollector(username=username) if username else None
 
         # Configure Haystack logging to use same log files
         if username:
@@ -364,44 +367,92 @@ class PipelineRunner:
         """
         from pathlib import Path
 
-        # Get the pipeline
-        if pipeline_name not in self._haystack_pipelines:
-            raise ValueError(
-                f"Pipeline '{pipeline_name}' not found. "
-                f"Call create_haystack_pipeline('{pipeline_name}') first."
-            )
+        start_time = time.time()
+        success = False
+        error_msg = None
 
-        pipeline = self._haystack_pipelines[pipeline_name]
+        try:
+            # Get the pipeline
+            if pipeline_name not in self._haystack_pipelines:
+                raise ValueError(
+                    f"Pipeline '{pipeline_name}' not found. "
+                    f"Call create_haystack_pipeline('{pipeline_name}') first."
+                )
 
-        # Get data path from kwargs
-        data_path = kwargs.get("data_path")
-        if not data_path:
-            raise ValueError("data_path is required in kwargs")
+            pipeline = self._haystack_pipelines[pipeline_name]
 
-        data_dir = Path(data_path)
-        if not data_dir.exists():
-            raise FileNotFoundError(f"Data directory not found: {data_dir}")
+            # Get data path from kwargs
+            data_path = kwargs.get("data_path")
+            if not data_path:
+                raise ValueError("data_path is required in kwargs")
 
-        # Try to detect file type based on pipeline name or find any supported files
-        input_files: List[Any] = []
-        file_patterns = ["*.pdf", "*.txt", "*.md", "*.docx", "*.html"]
+            data_dir = Path(data_path)
+            if not data_dir.exists():
+                raise FileNotFoundError(f"Data directory not found: {data_dir}")
 
-        for pattern in file_patterns:
-            input_files.extend(data_dir.glob(pattern))
+            # Try to detect file type based on pipeline name or find any supported files
+            input_files: List[Any] = []
+            file_patterns = ["*.pdf", "*.txt", "*.md", "*.docx", "*.html"]
 
-        if not input_files:
-            raise FileNotFoundError(f"No supported files found in {data_dir}")
+            for pattern in file_patterns:
+                input_files.extend(data_dir.glob(pattern))
 
-        self.logger.info(f"Running indexing pipeline: {pipeline_name}")
-        self.logger.info(f"Found {len(input_files)} files in {data_dir}")
+            if not input_files:
+                raise FileNotFoundError(f"No supported files found in {data_dir}")
 
-        # Run the pipeline with the file sources
-        sources = [str(file_path) for file_path in input_files]
-        result = pipeline.run({"sources": sources})
+            self.logger.info(f"Running indexing pipeline: {pipeline_name}")
+            self.logger.info(f"Found {len(input_files)} files in {data_dir}")
 
-        self.logger.info(f"Indexing completed for {len(input_files)} files")
+            # Run the pipeline with the file sources
+            sources = [str(file_path) for file_path in input_files]
+            result = pipeline.run({"sources": sources})
 
-        return result
+            self.logger.info(f"Indexing completed for {len(input_files)} files")
+
+            success = True
+
+            # Log metrics
+            if self.metrics:
+                end_time = time.time()
+                component_count = len(
+                    self._haystack_components_by_pipeline.get(pipeline_name, {})
+                )
+                self.metrics.log_pipeline_execution(
+                    pipeline_name=pipeline_name,
+                    start_time=start_time,
+                    end_time=end_time,
+                    total_components=component_count,
+                    success=success,
+                    metadata={
+                        "type": "indexing",
+                        "files_processed": len(input_files),
+                        "data_path": str(data_dir),
+                    },
+                )
+
+            return result
+
+        except Exception as e:
+            error_msg = str(e)
+            success = False
+
+            # Log failed metrics
+            if self.metrics:
+                end_time = time.time()
+                component_count = len(
+                    self._haystack_components_by_pipeline.get(pipeline_name, {})
+                )
+                self.metrics.log_pipeline_execution(
+                    pipeline_name=pipeline_name,
+                    start_time=start_time,
+                    end_time=end_time,
+                    total_components=component_count,
+                    success=success,
+                    error=error_msg,
+                    metadata={"type": "indexing"},
+                )
+
+            raise
 
     def _run_retrieval_pipeline(self, pipeline_name: str, **kwargs: Any) -> Any:
         """

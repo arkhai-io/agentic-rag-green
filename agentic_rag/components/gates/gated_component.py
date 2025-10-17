@@ -1,8 +1,10 @@
 """Generic wrapper that adds caching gates to any Haystack component."""
 
+import time
 from typing import Any, Dict, List, Optional
 
 from ...utils.logger import get_logger
+from ...utils.metrics import MetricsCollector
 from ..neo4j_manager import GraphStore
 from .ingate import InGate
 from .outgate import OutGate
@@ -59,6 +61,7 @@ class GatedComponent:
         self.graph_store = graph_store
         self.username = username
         self.logger = get_logger(f"{__name__}.{component_name}", username=username)
+        self.metrics = MetricsCollector(username=username)
 
         # Create gates with IPFS retrieval enabled
         self.ingate = InGate(
@@ -92,6 +95,8 @@ class GatedComponent:
         Returns:
             Component output
         """
+        start_time = time.time()
+
         # Extract component config
         component_config = self._extract_component_config()
 
@@ -111,9 +116,22 @@ class GatedComponent:
 
         cached_items = cache_result["cached"]
         uncached_items = cache_result["uncached"]
+        cache_hits = len(cached_items)
+        cache_misses = len(uncached_items)
 
         # If everything is cached, skip component execution
         if not uncached_items:
+            end_time = time.time()
+            self.metrics.log_component_execution(
+                component_name=self.component_name,
+                component_id=self.component_id,
+                start_time=start_time,
+                end_time=end_time,
+                input_count=len(input_items),
+                output_count=len(cached_items),
+                cache_hits=cache_hits,
+                cache_misses=cache_misses,
+            )
             return self._format_cached_output(cached_items)
 
         # Run component on uncached items only
@@ -153,6 +171,20 @@ class GatedComponent:
                     )
                 except Exception:
                     pass  # Cache storage failed, but component executed successfully
+
+        end_time = time.time()
+
+        # Log metrics
+        self.metrics.log_component_execution(
+            component_name=self.component_name,
+            component_id=self.component_id,
+            start_time=start_time,
+            end_time=end_time,
+            input_count=len(input_items),
+            output_count=len(output_items),
+            cache_hits=cache_hits,
+            cache_misses=cache_misses,
+        )
 
         # Return component output
         typed_output: Dict[str, Any] = component_output

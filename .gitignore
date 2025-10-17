@@ -181,10 +181,11 @@ cython_debug/
 *.pth
 *.ckpt
 
-# Logs
+# Logs and Metrics
 logs/
 .logs/
 *.log
+*.jsonl
 
 # Temporary files
 tmp/

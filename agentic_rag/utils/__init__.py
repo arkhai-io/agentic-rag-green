@@ -2,10 +2,13 @@
 
 from .ipfs_client import LighthouseClient
 from .logger import configure_haystack_logging, get_logger, get_system_logger
+from .metrics import MetricsCollector, TimedExecution
 
 __all__ = [
     "LighthouseClient",
     "get_logger",
     "get_system_logger",
     "configure_haystack_logging",
+    "MetricsCollector",
+    "TimedExecution",
 ]
