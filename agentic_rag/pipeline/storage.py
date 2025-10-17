@@ -16,6 +16,7 @@ from ..types import (
     UserNode,
     create_haystack_component,
 )
+from ..utils.logger import get_system_logger
 
 
 class GraphStorage:
@@ -24,6 +25,7 @@ class GraphStorage:
     def __init__(self, graph_store: GraphStore, registry: ComponentRegistry) -> None:
         self.graph_store = graph_store
         self.registry = registry
+        self.logger = get_system_logger(__name__)
 
     def create_pipeline_graph(
         self, spec: PipelineSpec, connections: List[Tuple[str, str]], username: str
@@ -51,11 +53,15 @@ class GraphStorage:
             node_id_by_name[component_spec.name] = node_dict["id"]
 
         # Add/update the owning user node
+        self.logger.info(
+            f"Creating pipeline graph for user '{username}', pipeline '{spec.name}'"
+        )
         user_node = UserNode(username=username, display_name=username.title())
         user_dict = user_node.to_dict()
         self.graph_store.add_nodes_batch([user_dict], "User")
 
         # Add component nodes
+        self.logger.debug(f"Adding {len(nodes)} component nodes to graph")
         self.graph_store.add_nodes_batch(nodes, "Component")
 
         document_store_nodes: List[Dict[str, Any]] = []

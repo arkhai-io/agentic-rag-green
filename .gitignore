@@ -183,8 +183,11 @@ cython_debug/
 
 # Logs
 logs/
+.logs/
 *.log
 
 # Temporary files
 tmp/
 temp/
+
+./

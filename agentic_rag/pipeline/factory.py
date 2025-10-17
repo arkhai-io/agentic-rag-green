@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from ..components import GraphStore, get_default_registry
 from ..types import PipelineSpec, get_component_value, validate_component_spec
+from ..utils.logger import configure_haystack_logging, get_logger
 from .storage import GraphStorage
 
 
@@ -19,6 +20,10 @@ class PipelineFactory:
         self.graph_storage = (
             GraphStorage(graph_store, self.registry) if graph_store else None
         )
+        self.logger = get_logger(__name__, username=username)
+
+        # Configure Haystack logging to use same log files
+        configure_haystack_logging(username=username, level="DEBUG")
 
     def build_pipeline_graphs_from_specs(
         self,
@@ -47,6 +52,10 @@ class PipelineFactory:
         # Use provided username or fall back to factory's username
         effective_username = username or self.username
 
+        self.logger.info(
+            f"Building {len(pipeline_specs)} pipeline graphs for user: {effective_username}"
+        )
+
         pipeline_specs_list = []
 
         for i, (spec, config) in enumerate(zip(pipeline_specs, configs)):
@@ -56,11 +65,13 @@ class PipelineFactory:
                 )
 
             pipeline_name = f"pipeline_{i}"
+            self.logger.debug(f"Building pipeline {i}: {pipeline_name}")
             pipeline_spec = self.build_pipeline_graph(
                 spec, pipeline_name, config, effective_username
             )
             pipeline_specs_list.append(pipeline_spec)
 
+        self.logger.info(f"Successfully built {len(pipeline_specs_list)} pipelines")
         return pipeline_specs_list
 
     def build_pipeline_graph(
@@ -110,9 +121,12 @@ class PipelineFactory:
 
         # Build the graph representation (no Haystack pipeline)
         if self.graph_storage:
+            self.logger.info(
+                f"Creating graph representation for pipeline '{pipeline_name}'"
+            )
             self.graph_storage.build_pipeline_graph(pipeline_spec, effective_username)
         else:
-            print("Warning: No graph store configured, pipeline graph not created")
+            self.logger.warning("No graph store configured, pipeline graph not created")
 
         return pipeline_spec
 

@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from ..components import GraphStore
 from ..types import PipelineUsage
+from ..utils.logger import configure_haystack_logging, get_logger
 
 
 class PipelineRunner:
@@ -19,6 +20,7 @@ class PipelineRunner:
         graph_store: Optional[GraphStore] = None,
         username: Optional[str] = None,
         pipeline_names: Optional[List[str]] = None,
+        enable_caching: bool = False,
     ) -> None:
         """
         Initialize the pipeline runner.
@@ -28,9 +30,22 @@ class PipelineRunner:
             username: Username to load pipelines for (auto-loads pipelines if provided)
             pipeline_names: List of pipeline names to load (e.g., ['pdf_indexing_pipeline'])
                           If None and username is provided, loads all pipelines for user
+            enable_caching: If True, wraps components with GatedComponent for caching
         """
         self.graph_store = graph_store
         self.username = username
+        self.enable_caching = enable_caching
+        self.logger = (
+            get_logger(__name__, username=username)
+            if username
+            else get_logger(__name__)
+        )
+
+        # Configure Haystack logging to use same log files
+        if username:
+            configure_haystack_logging(username=username, level="DEBUG")
+        else:
+            configure_haystack_logging(level="DEBUG")
 
         # Graph representations from Neo4j for multiple pipelines
         self._pipeline_graphs: Dict[str, List[Dict[str, Any]]] = {}
@@ -41,6 +56,7 @@ class PipelineRunner:
 
         # Auto-load and build pipelines if username is provided
         if username and graph_store:
+            self.logger.info(f"Initializing PipelineRunner for user: {username}")
             self._auto_load_pipelines(pipeline_names)
 
     def _auto_load_pipelines(self, pipeline_names: Optional[List[str]] = None) -> None:
@@ -57,26 +73,28 @@ class PipelineRunner:
             # If no specific pipelines provided, try common pipeline names
             pipeline_names = ["pdf_indexing_pipeline", "pdf_retrieval_pipeline"]
 
-        print(f"Auto-loading pipelines for user: {self.username}")
-        print(f"Pipeline names: {pipeline_names}\n")
+        self.logger.info(f"Auto-loading pipelines: {pipeline_names}")
 
         for pipeline_name in pipeline_names:
             try:
                 # Load pipeline graph
+                self.logger.debug(f"Loading pipeline graph: {pipeline_name}")
                 self.load_pipeline_graph([pipeline_name], self.username)
 
                 # Build Haystack components
+                self.logger.debug(f"Building Haystack components: {pipeline_name}")
                 self.build_haystack_components_from_graph(pipeline_name)
 
                 # Create connected pipeline
+                self.logger.debug(f"Creating connected pipeline: {pipeline_name}")
                 self.create_haystack_pipeline(pipeline_name)
 
-                print(f"Successfully loaded: {pipeline_name}")
+                self.logger.info(f"Successfully loaded pipeline: {pipeline_name}")
 
             except Exception as e:
-                print(f"Warning: Could not load {pipeline_name}: {e}")
+                self.logger.warning(f"Could not load {pipeline_name}: {e}")
 
-        print(f"\nTotal pipelines loaded: {len(self._haystack_pipelines)}\n")
+        self.logger.info(f"Total pipelines loaded: {len(self._haystack_pipelines)}")
 
     def load_pipeline_graph(self, pipeline_hashes: List[str], username: str) -> None:
         """
@@ -144,7 +162,7 @@ class PipelineRunner:
         # Build components dynamically
         haystack_components = {}
 
-        print(f"\nBuilding Haystack components for: {pipeline_name}")
+        self.logger.debug(f"Building Haystack components for: {pipeline_name}")
 
         for comp_data in components_data:
             comp_id = comp_data.get("id")
@@ -165,7 +183,7 @@ class PipelineRunner:
                 # Get the base component spec from registry
                 base_spec = registry.get_component_spec(comp_name)
                 if not base_spec:
-                    print(f"  Error: Component '{comp_name}' not found in registry")
+                    self.logger.error(f"Component '{comp_name}' not found in registry")
                     continue
 
                 # Parse and apply configuration
@@ -188,14 +206,41 @@ class PipelineRunner:
                 # Instantiate the actual Haystack component
                 # For writers/retrievers, create_haystack_component will handle document store creation
                 haystack_component = create_haystack_component(configured_spec)
+
+                # Optionally wrap with GatedComponent for caching
+                if self.enable_caching and self.graph_store and self.username:
+                    # Skip wrapping document stores and writers (they're already persistent)
+                    skip_wrapping = (
+                        "writer" in comp_name.lower() or "store" in comp_name.lower()
+                    )
+
+                    if not skip_wrapping:
+                        from ..components.gates import GatedComponent
+
+                        self.logger.info(f"🔒 Wrapping {comp_name} with caching gates")
+                        haystack_component = GatedComponent(
+                            component=haystack_component,
+                            component_id=comp_id,
+                            component_name=comp_name,
+                            graph_store=self.graph_store,
+                            username=self.username,
+                            retrieve_from_ipfs=True,
+                        )
+                    else:
+                        self.logger.debug(
+                            f"Skipping gate wrapping for {comp_name} (writer/store)"
+                        )
+
                 haystack_components[comp_id] = haystack_component
 
-                print(f"  Built {comp_name} ({type(haystack_component).__name__})")
+                self.logger.debug(
+                    f"Built {comp_name} ({type(haystack_component).__name__})"
+                )
 
             except Exception as e:
-                print(f"  Error building {comp_name}: {e}")
+                self.logger.error(f"Error building {comp_name}: {e}", exc_info=True)
 
-        print(f"Built {len(haystack_components)} components\n")
+        self.logger.info(f"Built {len(haystack_components)} components")
 
         # Store the components for this pipeline
         self._haystack_components_by_pipeline[pipeline_name] = haystack_components
@@ -231,7 +276,7 @@ class PipelineRunner:
         # Create Haystack pipeline
         pipeline = Pipeline()
 
-        print(f"\nCreating Haystack pipeline for: {pipeline_name}")
+        self.logger.debug(f"Creating Haystack pipeline for: {pipeline_name}")
 
         # Add all components from the graph (filter out only DocumentStore nodes)
         # Components may come from connected pipelines (e.g., retrievers accessing other pipeline's stores)
@@ -249,7 +294,7 @@ class PipelineRunner:
             if comp_id in haystack_components:
                 # Use comp_id as the component name to ensure uniqueness
                 pipeline.add_component(comp_id, haystack_components[comp_id])
-                print(f"  Added component: {comp_name} (id: {comp_id})")
+                self.logger.debug(f"Added component: {comp_name} (id: {comp_id})")
 
         # Connect components based on graph edges
         for comp_data in component_nodes:
@@ -268,13 +313,15 @@ class PipelineRunner:
                             next_name = next_data.get("component_name")
                             try:
                                 pipeline.connect(current_id, next_id)
-                                print(f"  Connected: {current_name} -> {next_name}")
+                                self.logger.debug(
+                                    f"Connected: {current_name} -> {next_name}"
+                                )
                             except Exception as e:
-                                print(
-                                    f"  Warning: Could not connect {current_name} -> {next_name}: {e}"
+                                self.logger.warning(
+                                    f"Could not connect {current_name} -> {next_name}: {e}"
                                 )
 
-        print(f"Pipeline '{pipeline_name}' created successfully\n")
+        self.logger.info(f"Pipeline '{pipeline_name}' created successfully")
 
         # Store the connected pipeline
         self._haystack_pipelines[pipeline_name] = pipeline
@@ -345,14 +392,14 @@ class PipelineRunner:
         if not input_files:
             raise FileNotFoundError(f"No supported files found in {data_dir}")
 
-        print(f"\nRunning indexing pipeline: {pipeline_name}")
-        print(f"Found {len(input_files)} files in {data_dir}")
+        self.logger.info(f"Running indexing pipeline: {pipeline_name}")
+        self.logger.info(f"Found {len(input_files)} files in {data_dir}")
 
         # Run the pipeline with the file sources
         sources = [str(file_path) for file_path in input_files]
         result = pipeline.run({"sources": sources})
 
-        print(f"Indexing completed for {len(input_files)} files\n")
+        self.logger.info(f"Indexing completed for {len(input_files)} files")
 
         return result
 

@@ -11,6 +11,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 from ...utils.ipfs_client import LighthouseClient
+from ...utils.logger import get_logger
 from ..neo4j_manager import GraphStore
 
 
@@ -50,6 +51,7 @@ class OutGate:
         self.component_name = component_name
         self.username = username
         self.ipfs_client = ipfs_client or LighthouseClient()
+        self.logger = get_logger(f"{__name__}.{component_name}", username=username)
 
     def store(
         self,
@@ -116,6 +118,9 @@ class OutGate:
             )
 
         # Store everything to Neo4j in one batch
+        self.logger.info(
+            f"Storing {len(output_records)} outputs to cache (component: {self.component_name})"
+        )
         self.graph_store.store_transformation_batch(
             input_fingerprint=input_fingerprint,
             input_ipfs_hash=self._upload_to_ipfs(input_data),
@@ -127,6 +132,8 @@ class OutGate:
             username=self.username,
             processing_time_ms=processing_time_ms,
         )
+
+        self.logger.debug(f"Stored with input fingerprint: {input_fingerprint}")
 
         return {
             "input_fingerprint": input_fingerprint,
