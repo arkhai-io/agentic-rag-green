@@ -16,6 +16,7 @@ from ..types import (
     UserNode,
     create_haystack_component,
 )
+from ..utils.logger import get_system_logger
 
 
 class GraphStorage:
@@ -24,11 +25,18 @@ class GraphStorage:
     def __init__(self, graph_store: GraphStore, registry: ComponentRegistry) -> None:
         self.graph_store = graph_store
         self.registry = registry
+        self.logger = get_system_logger(__name__)
 
     def create_pipeline_graph(
-        self, spec: PipelineSpec, connections: List[Tuple[str, str]]
+        self, spec: PipelineSpec, connections: List[Tuple[str, str]], username: str
     ) -> None:
-        """Create graph representation of the pipeline components."""
+        """Create graph representation of the pipeline components.
+
+        Args:
+            spec: Pipeline specification
+            connections: List of (source, target) component connections
+            username: Username for pipeline ownership
+        """
 
         nodes: List[Dict[str, Any]] = []
         node_id_by_name: Dict[str, str] = {}
@@ -37,7 +45,7 @@ class GraphStorage:
                 component_name=component_spec.name,
                 pipeline_name=spec.name,
                 version="1.0.0",
-                author="test_user",
+                author=username,
                 component_config=component_spec.get_config(),
             )
             node_dict = node.to_dict()
@@ -45,11 +53,15 @@ class GraphStorage:
             node_id_by_name[component_spec.name] = node_dict["id"]
 
         # Add/update the owning user node
-        user_node = UserNode(username="test_user", display_name="Test User")
+        self.logger.info(
+            f"Creating pipeline graph for user '{username}', pipeline '{spec.name}'"
+        )
+        user_node = UserNode(username=username, display_name=username.title())
         user_dict = user_node.to_dict()
         self.graph_store.add_nodes_batch([user_dict], "User")
 
         # Add component nodes
+        self.logger.debug(f"Adding {len(nodes)} component nodes to graph")
         self.graph_store.add_nodes_batch(nodes, "Component")
 
         document_store_nodes: List[Dict[str, Any]] = []
@@ -84,6 +96,7 @@ class GraphStorage:
                     pipeline_name=spec.name,
                     root_dir=root_dir,
                     component_node_ids=related_component_ids,
+                    author=username,
                 )
                 doc_store_dict = doc_store_node.to_dict()
                 document_store_nodes.append(doc_store_dict)
@@ -212,13 +225,16 @@ class GraphStorage:
                                         ]
                                     config_json = json_module.dumps(retriever_config)
 
+                                # Get author from original component node
+                                author = comp.get("author", username)
+
                                 # Create substituted component dictionary directly
                                 substituted_dict = {
                                     "id": component_id,
                                     "component_name": component_name,  # Registry name
                                     "pipeline_name": spec.name,
                                     "version": "1.0.0",
-                                    "author": "test_user",
+                                    "author": author,
                                     "component_config_json": config_json,
                                 }
 
@@ -298,14 +314,21 @@ class GraphStorage:
                     target_label="DocumentStore",
                 )
 
-    def build_pipeline_graph(self, spec: PipelineSpec) -> None:
-        """Build a graph representation of the pipeline specification."""
+    def build_pipeline_graph(
+        self, spec: PipelineSpec, username: str = "test_user"
+    ) -> None:
+        """Build a graph representation of the pipeline specification.
+
+        Args:
+            spec: Pipeline specification
+            username: Username for pipeline ownership (defaults to "test_user")
+        """
 
         # Determine connections based on component order and dependencies
         connections = self._determine_connections(spec.components)
 
         # Create graph representation
-        self.create_pipeline_graph(spec, connections)
+        self.create_pipeline_graph(spec, connections, username)
 
     def build_haystack_pipeline(self, spec: PipelineSpec) -> Any:
         """Build a Haystack pipeline from a pipeline specification."""

@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, List, Optional
 
+from ...utils.logger import get_logger
 from ..neo4j_manager import GraphStore
 from .ingate import InGate
 from .outgate import OutGate
@@ -57,12 +58,14 @@ class GatedComponent:
         self.component_name = component_name
         self.graph_store = graph_store
         self.username = username
+        self.logger = get_logger(f"{__name__}.{component_name}", username=username)
 
         # Create gates with IPFS retrieval enabled
         self.ingate = InGate(
             graph_store=graph_store,
             component_id=component_id,
             component_name=component_name,
+            username=username,
             retrieve_from_ipfs=True,  # Always retrieve from IPFS for cached results
         )
 

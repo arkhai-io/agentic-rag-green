@@ -9,6 +9,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 from ...utils.ipfs_client import LighthouseClient
+from ...utils.logger import get_logger
 from ..neo4j_manager import GraphStore
 
 
@@ -33,6 +34,7 @@ class InGate:
         graph_store: GraphStore,
         component_id: str,
         component_name: str,
+        username: Optional[str] = None,
         ipfs_client: Optional[LighthouseClient] = None,
         retrieve_from_ipfs: bool = False,
     ):
@@ -43,6 +45,7 @@ class InGate:
             graph_store: Neo4j graph store for cache lookups
             component_id: Unique ID of the component this gate protects
             component_name: Human-readable component name
+            username: Username for per-user logging
             ipfs_client: Optional Lighthouse IPFS client (creates one if not provided)
             retrieve_from_ipfs: If True, retrieves actual data from IPFS (default: False, returns metadata only)
         """
@@ -51,6 +54,7 @@ class InGate:
         self.component_name = component_name
         self.ipfs_client = ipfs_client or LighthouseClient()
         self.retrieve_from_ipfs = retrieve_from_ipfs
+        self.logger = get_logger(f"{__name__}.{component_name}", username=username)
 
     def check_cache_batch(
         self, input_items: List[Any], component_config: Dict[str, Any]
@@ -111,6 +115,7 @@ class InGate:
         cached = []
         uncached = []
 
+        cache_hits = 0
         for idx, item in enumerate(input_items):
             fp = fingerprints[idx]
             if fp in cache_map:
@@ -126,15 +131,22 @@ class InGate:
                             data = self._retrieve_from_ipfs(ipfs_hash, data_type)
                             cached_data.append(data)
                         cached.append((item, cached_data))
-                    except (ConnectionError, Exception):
+                        cache_hits += 1
+                    except (ConnectionError, Exception) as e:
                         # IPFS retrieval failed - treat as cache miss
+                        self.logger.warning(f"IPFS retrieval failed for {fp}: {e}")
                         uncached.append(item)
                 else:
                     # Just return metadata (fingerprints + IPFS hashes)
                     cached.append((item, cached_metadata))
+                    cache_hits += 1
             else:
                 # No cache, needs processing
                 uncached.append(item)
+
+        self.logger.info(
+            f"Cache check: {cache_hits} hits, {len(uncached)} misses (total: {len(input_items)})"
+        )
 
         return {
             "cached": cached,
