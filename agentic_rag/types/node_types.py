@@ -14,15 +14,23 @@ class ComponentNode:
     version: str
     author: str
     component_config: Dict[str, Any]
+    component_type: Optional[str] = None  # e.g., "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"
+    branch_id: Optional[str] = (
+        None  # For retrieval pipelines: identifies which indexing pipeline branch
+    )
     id: Optional[str] = None  # Auto-generated if not provided
 
     def __post_init__(self) -> None:
         """Generate ID if not provided."""
         if self.id is None:
-            # Create deterministic hash from: component_name__pipeline_name__version__author__component_config
+            # Create deterministic hash from: component_name__pipeline_name__version__author__branch_id
             import hashlib
 
             combined = f"{self.component_name}__{self.pipeline_name}__{self.version}__{self.author}"
+
+            # Include branch_id if provided (for retrieval pipeline branches)
+            if self.branch_id:
+                combined += f"__{self.branch_id}"
 
             # Generate SHA-256 hash and take first 12 characters for readability
             hash_obj = hashlib.sha256(combined.encode("utf-8"))
@@ -37,7 +45,7 @@ class ComponentNode:
             self.component_config, sort_keys=True, separators=(",", ":")
         )
 
-        return {
+        result = {
             "id": self.id,
             "component_name": self.component_name,
             "pipeline_name": self.pipeline_name,
@@ -45,6 +53,14 @@ class ComponentNode:
             "author": self.author,
             "component_config_json": config_json,
         }
+
+        if self.component_type:
+            result["component_type"] = self.component_type
+
+        if self.branch_id:
+            result["branch_id"] = self.branch_id
+
+        return result
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ComponentNode":
@@ -60,6 +76,8 @@ class ComponentNode:
             version=data["version"],
             author=data["author"],
             component_config=component_config,
+            component_type=data.get("component_type"),
+            branch_id=data.get("branch_id"),
             id=data.get("id"),
         )
 
