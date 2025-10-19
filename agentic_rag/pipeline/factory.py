@@ -3,7 +3,12 @@
 from typing import Any, Dict, List, Optional
 
 from ..components import GraphStore, get_default_registry
-from ..types import PipelineSpec, get_component_value, validate_component_spec
+from ..types import (
+    PipelineSpec,
+    PipelineType,
+    get_component_value,
+    validate_component_spec,
+)
 from ..utils.logger import configure_haystack_logging, get_logger
 from .storage import GraphStorage
 
@@ -29,6 +34,7 @@ class PipelineFactory:
         self,
         pipeline_specs: List[List[Dict[str, str]]],
         configs: Optional[List[Dict[str, Any]]] = None,
+        pipeline_types: Optional[List[str]] = None,
         username: Optional[str] = None,
     ) -> List[PipelineSpec]:
         """
@@ -38,6 +44,8 @@ class PipelineFactory:
             pipeline_specs: List of component specifications as dicts.
                 Example: [[{"type": "CONVERTER.PDF"}, {"type": "CHUNKER.RECURSIVE"}]]
             configs: Optional list of configuration dicts for each pipeline
+            pipeline_types: Optional list of pipeline types ("indexing" or "retrieval")
+                Defaults to "indexing" for all pipelines
             username: Username for pipeline ownership (defaults to factory's username)
 
         Returns:
@@ -46,8 +54,16 @@ class PipelineFactory:
         if configs is None:
             configs = [{}] * len(pipeline_specs)
 
+        if pipeline_types is None:
+            pipeline_types = ["indexing"] * len(pipeline_specs)
+
         if len(configs) != len(pipeline_specs):
             raise ValueError("Number of configs must match number of pipeline specs")
+
+        if len(pipeline_types) != len(pipeline_specs):
+            raise ValueError(
+                "Number of pipeline_types must match number of pipeline specs"
+            )
 
         # Use provided username or fall back to factory's username
         effective_username = username or self.username
@@ -58,16 +74,19 @@ class PipelineFactory:
 
         pipeline_specs_list = []
 
-        for i, (spec, config) in enumerate(zip(pipeline_specs, configs)):
+        for i, (spec, config, pipeline_type) in enumerate(
+            zip(pipeline_specs, configs, pipeline_types)
+        ):
             if len(spec) < 1 or len(spec) > 5:
                 raise ValueError(
                     f"Pipeline {i} must have 1-5 components, got {len(spec)}"
                 )
 
-            pipeline_name = f"pipeline_{i}"
-            self.logger.debug(f"Building pipeline {i}: {pipeline_name}")
+            # Use custom pipeline name from config if provided, otherwise default to pipeline_{i}
+            pipeline_name = config.get("_pipeline_name", f"pipeline_{i}")
+            self.logger.debug(f"Building {pipeline_type} pipeline {i}: {pipeline_name}")
             pipeline_spec = self.build_pipeline_graph(
-                spec, pipeline_name, config, effective_username
+                spec, pipeline_name, config, pipeline_type, effective_username
             )
             pipeline_specs_list.append(pipeline_spec)
 
@@ -79,6 +98,7 @@ class PipelineFactory:
         component_specs: List[Dict[str, str]],
         pipeline_name: str,
         config: Optional[Dict[str, Any]] = None,
+        pipeline_type: str = "indexing",
         username: Optional[str] = None,
     ) -> PipelineSpec:
         """
@@ -89,6 +109,7 @@ class PipelineFactory:
                 Example: [{"type": "CONVERTER.PDF"}, {"type": "CHUNKER.RECURSIVE"}]
             pipeline_name: Name for the pipeline
             config: Optional configuration dict
+            pipeline_type: Type of pipeline - "indexing" or "retrieval" (default: "indexing")
             username: Username for pipeline ownership (defaults to factory's username)
 
         Returns:
@@ -98,6 +119,43 @@ class PipelineFactory:
 
         # Use provided username or fall back to factory's username
         effective_username = username or self.username
+
+        # Route to appropriate builder based on pipeline type
+        if pipeline_type == "indexing":
+            return self._build_indexing_pipeline(
+                component_specs, pipeline_name, config, effective_username
+            )
+        elif pipeline_type == "retrieval":
+            return self._build_retrieval_pipeline(
+                component_specs, pipeline_name, config, effective_username
+            )
+        else:
+            raise ValueError(
+                f"Invalid pipeline_type: {pipeline_type}. Must be 'indexing' or 'retrieval'"
+            )
+
+    def _build_indexing_pipeline(
+        self,
+        component_specs: List[Dict[str, str]],
+        pipeline_name: str,
+        config: Dict[str, Any],
+        username: str,
+        branch_id: Optional[str] = None,
+    ) -> PipelineSpec:
+        """
+        Build an indexing pipeline.
+
+        Args:
+            component_specs: List of component specifications
+            pipeline_name: Name for the pipeline
+            config: Configuration dict
+            username: Username for pipeline ownership
+            branch_id: Optional branch identifier for retrieval pipeline branches
+
+        Returns:
+            PipelineSpec for indexing pipeline
+        """
+        self.logger.info(f"Building indexing pipeline: {pipeline_name}")
 
         # Parse component specifications and validate
         component_specs_list = []
@@ -111,24 +169,289 @@ class PipelineFactory:
             # Configure the spec directly with user config
             user_config = config.get(component_name, {})
             configured_spec = spec.configure(user_config)
+
+            # Store the original full type string
+            configured_spec.full_type = spec_item.get("type", "")
+
             component_specs_list.append(configured_spec)
 
-        # Create pipeline specification - no separate component_configs needed!
+        # Create pipeline specification
         pipeline_spec = PipelineSpec(
             name=pipeline_name,
-            components=component_specs_list,  # Already configured!
+            components=component_specs_list,
+            pipeline_type=PipelineType.INDEXING,
         )
 
-        # Build the graph representation (no Haystack pipeline)
+        # Build the graph representation
         if self.graph_storage:
             self.logger.info(
-                f"Creating graph representation for pipeline '{pipeline_name}'"
+                f"Creating graph representation for indexing pipeline '{pipeline_name}'"
             )
-            self.graph_storage.build_pipeline_graph(pipeline_spec, effective_username)
+            self.graph_storage.build_pipeline_graph(pipeline_spec, username, branch_id)
         else:
             self.logger.warning("No graph store configured, pipeline graph not created")
 
         return pipeline_spec
+
+    def _extract_indexing_pipelines(self, config: Dict[str, Any]) -> List[str]:
+        """Step 1: Extract indexing pipeline names from config."""
+        indexing_pipelines = config.get("_indexing_pipelines", [])
+
+        if not indexing_pipelines:
+            raise ValueError(
+                "Retrieval pipeline requires '_indexing_pipelines' in config. "
+                "Example: {'_indexing_pipelines': ['pipeline_0']}"
+            )
+
+        if not isinstance(indexing_pipelines, list):
+            raise ValueError(
+                f"'_indexing_pipelines' must be a list, got: {type(indexing_pipelines)}"
+            )
+
+        self.logger.info(
+            f"Will query {len(indexing_pipelines)} indexing pipeline(s): {indexing_pipelines}"
+        )
+
+        return indexing_pipelines
+
+    def _fetch_indexing_pipeline_components(
+        self, indexing_pipelines: List[str], username: str
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Step 2: Fetch embedder and writer components from each indexing pipeline.
+
+        We query all components for each pipeline and filter for embedder/writer pairs.
+        """
+        if not self.graph_store:
+            raise RuntimeError("Cannot build retrieval pipeline without a graph store")
+
+        indexing_pipeline_components: Dict[str, List[Dict[str, Any]]] = {}
+
+        for indexing_pipeline_name in indexing_pipelines:
+            self.logger.debug(f"Querying components for: {indexing_pipeline_name}")
+
+            # Get all components for this pipeline
+            all_components = self.graph_store.get_components_by_pipeline(
+                pipeline_name=indexing_pipeline_name, username=username
+            )
+
+            if not all_components:
+                raise ValueError(
+                    f"No components found for '{indexing_pipeline_name}' (user: {username})"
+                )
+
+            # Filter for embedder and writer components (needed for retrieval)
+            # Separate them to ensure correct order: embedder(s) first, then writer
+            embedders = []
+            writers = []
+
+            for component in all_components:
+                component_name = component.get("component_name", "")
+                if "embedder" in component_name.lower():
+                    embedders.append(component)
+                elif "writer" in component_name.lower():
+                    writers.append(component)
+
+            # Combine in correct order: embedders first, then writers
+            relevant_components = embedders + writers
+
+            if not relevant_components:
+                self.logger.warning(
+                    f"No embedder/writer components found for '{indexing_pipeline_name}'"
+                )
+                indexing_pipeline_components[indexing_pipeline_name] = []
+                continue
+
+            indexing_pipeline_components[indexing_pipeline_name] = relevant_components
+
+            component_names = [c.get("component_name") for c in relevant_components]
+            self.logger.info(
+                f"✓ Retrieved {len(relevant_components)} component(s) for "
+                f"'{indexing_pipeline_name}': {component_names}"
+            )
+
+        return indexing_pipeline_components
+
+    def _build_component_specs(
+        self,
+        component_specs: List[Dict[str, str]],
+        indexing_pipeline_components: Dict[str, List[Dict[str, Any]]],
+    ) -> Dict[str, List[Dict[str, str]]]:
+        """Step 4: Build component specs for each indexing pipeline."""
+        retrieval_pipelines_specs = {}
+
+        for (
+            indexing_pipeline_name,
+            components_from_index,
+        ) in indexing_pipeline_components.items():
+            pipeline_component_specs = []
+
+            for spec_item in component_specs:
+                spec_type = spec_item.get("type", "")
+
+                if spec_type == "INDEX":
+                    self.logger.info(
+                        f"Injecting {len(components_from_index)} components "
+                        f"from '{indexing_pipeline_name}'"
+                    )
+
+                    for component_node in components_from_index:
+                        component_type = component_node.get("component_type")
+
+                        if not component_type:
+                            self.logger.warning(
+                                f"Component {component_node.get('component_name')} "
+                                "has no component_type, skipping"
+                            )
+                            continue
+
+                        pipeline_component_specs.append({"type": component_type})
+                        self.logger.debug(f"  Added: {component_type}")
+                else:
+                    pipeline_component_specs.append(spec_item)
+
+            retrieval_pipelines_specs[indexing_pipeline_name] = pipeline_component_specs
+
+            self.logger.info(
+                f"Built specs for '{indexing_pipeline_name}': "
+                f"{len(pipeline_component_specs)} components"
+            )
+
+        return retrieval_pipelines_specs
+
+    def _build_configs(
+        self,
+        config: Dict[str, Any],
+        indexing_pipeline_components: Dict[str, List[Dict[str, Any]]],
+    ) -> Dict[str, Dict[str, Any]]:
+        """Step 5: Build configs for each indexing pipeline."""
+        import json as json_module
+
+        retrieval_pipelines_configs = {}
+
+        for (
+            indexing_pipeline_name,
+            components_from_index,
+        ) in indexing_pipeline_components.items():
+            # Copy config but remove _pipeline_name (we pass it as parameter instead)
+            pipeline_config = {k: v for k, v in config.items() if k != "_pipeline_name"}
+
+            for component_node in components_from_index:
+                component_name = component_node.get("component_name", "")
+                component_config_json = component_node.get(
+                    "component_config_json", "{}"
+                )
+
+                component_config = json_module.loads(component_config_json)
+                pipeline_config[component_name] = component_config
+
+                self.logger.debug(
+                    f"Added config for '{component_name}': {component_config}"
+                )
+
+            retrieval_pipelines_configs[indexing_pipeline_name] = pipeline_config
+
+            self.logger.info(
+                f"Built config for '{indexing_pipeline_name}': "
+                f"{len(pipeline_config)} keys"
+            )
+
+        return retrieval_pipelines_configs
+
+    def _build_retrieval_pipeline(
+        self,
+        component_specs: List[Dict[str, str]],
+        pipeline_name: str,
+        config: Dict[str, Any],
+        username: str,
+    ) -> PipelineSpec:
+        """
+        Build a retrieval pipeline.
+
+        Retrieval pipelines are built dynamically from indexing pipeline metadata.
+        Components like embedders and retrievers are auto-injected based on
+        the indexing pipelines they query.
+
+        Args:
+            component_specs: List of component specifications (e.g., generator)
+            pipeline_name: Name for the pipeline
+            config: Configuration dict with optional "_indexing_pipelines" key
+            username: Username for pipeline ownership
+
+        Returns:
+            PipelineSpec for retrieval pipeline
+
+        Example config:
+            {
+                "_indexing_pipelines": ["pipeline_0"],  # Which indexing pipelines to query
+                "generator": {"model": "gpt-4"}
+            }
+        """
+        self.logger.info(f"Building retrieval pipeline: {pipeline_name}")
+
+        # Step 1: Extract indexing pipeline names
+        indexing_pipelines = self._extract_indexing_pipelines(config)
+
+        # Step 2: Fetch embedder and writer components
+        indexing_pipeline_components = self._fetch_indexing_pipeline_components(
+            indexing_pipelines, username
+        )
+
+        # Step 3: Build component specs for each pipeline
+        retrieval_pipelines_specs = self._build_component_specs(
+            component_specs, indexing_pipeline_components
+        )
+        print("Specs:", retrieval_pipelines_specs)
+
+        # Step 4: Build configs for each pipeline
+        retrieval_pipelines_configs = self._build_configs(
+            config, indexing_pipeline_components
+        )
+        print("Configs:", retrieval_pipelines_configs)
+
+        # Step 5: Build N pipelines using standard indexing builder
+        # All branches share same pipeline name but have unique component IDs via branch_id
+        built_pipelines = []
+
+        for indexing_pipeline_name in retrieval_pipelines_specs.keys():
+            pipeline_spec = retrieval_pipelines_specs[indexing_pipeline_name]
+            pipeline_config = retrieval_pipelines_configs[indexing_pipeline_name]
+
+            self.logger.info(
+                f"Building retrieval pipeline '{pipeline_name}' branch "
+                f"for indexing pipeline '{indexing_pipeline_name}'"
+            )
+
+            # Use the indexing pipeline builder (reuse existing logic)
+            # Pass indexing_pipeline_name as branch_id to ensure unique component IDs
+            built_pipeline = self._build_indexing_pipeline(
+                component_specs=pipeline_spec,
+                pipeline_name=pipeline_name,  # Same name for all branches
+                config=pipeline_config,
+                username=username,
+                branch_id=indexing_pipeline_name,  # Unique branch identifier
+            )
+
+            # Store reference to source indexing pipeline
+            built_pipeline.indexing_pipelines = [indexing_pipeline_name]
+
+            built_pipelines.append(built_pipeline)
+            self.logger.info(
+                f"✓ Built retrieval pipeline branch: {pipeline_name} -> {indexing_pipeline_name}"
+            )
+
+        self.logger.info(
+            f"Successfully built {len(built_pipelines)} retrieval pipeline(s) "
+            f"all named '{pipeline_name}'"
+        )
+
+        # Return the first one (they all have the same name)
+        if not built_pipelines:
+            raise RuntimeError(
+                f"Failed to build any retrieval pipeline branches for '{pipeline_name}'"
+            )
+
+        return built_pipelines[0]
 
     def _parse_component_spec(self, spec_item: Dict[str, str]) -> str:
         """

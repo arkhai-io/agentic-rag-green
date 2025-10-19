@@ -1,6 +1,6 @@
 """Graph storage for creating and managing graph representations of pipelines."""
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from haystack import Pipeline
 
@@ -8,8 +8,6 @@ from ..components import ComponentRegistry, GraphStore
 from ..types import (
     ComponentNode,
     ComponentSpec,
-    ComponentType,
-    DocumentStoreNode,
     GraphRelationship,
     PipelineSpec,
     PipelineType,
@@ -28,7 +26,11 @@ class GraphStorage:
         self.logger = get_system_logger(__name__)
 
     def create_pipeline_graph(
-        self, spec: PipelineSpec, connections: List[Tuple[str, str]], username: str
+        self,
+        spec: PipelineSpec,
+        connections: List[Tuple[str, str]],
+        username: str,
+        branch_id: Optional[str] = None,
     ) -> None:
         """Create graph representation of the pipeline components.
 
@@ -36,6 +38,7 @@ class GraphStorage:
             spec: Pipeline specification
             connections: List of (source, target) component connections
             username: Username for pipeline ownership
+            branch_id: Optional branch identifier for retrieval pipeline branches
         """
 
         nodes: List[Dict[str, Any]] = []
@@ -47,6 +50,10 @@ class GraphStorage:
                 version="1.0.0",
                 author=username,
                 component_config=component_spec.get_config(),
+                component_type=(
+                    component_spec.full_type if component_spec.full_type else None
+                ),
+                branch_id=branch_id,
             )
             node_dict = node.to_dict()
             nodes.append(node_dict)
@@ -63,62 +70,6 @@ class GraphStorage:
         # Add component nodes
         self.logger.debug(f"Adding {len(nodes)} component nodes to graph")
         self.graph_store.add_nodes_batch(nodes, "Component")
-
-        document_store_nodes: List[Dict[str, Any]] = []
-        component_to_store_edges: List[Tuple[str, str, str]] = []
-
-        if spec.pipeline_type == PipelineType.INDEXING:
-            # For indexing pipelines, create new DocumentStore nodes
-            for index, component_spec in enumerate(spec.components):
-                if component_spec.name != "chroma_document_writer":
-                    continue
-
-                writer_config = component_spec.get_config()
-                root_dir = writer_config.get("root_dir", ".")
-
-                # Collect node IDs in reverse order (writer first, then preceding components)
-                related_component_ids: List[str] = []
-
-                # Add writer first
-                writer_id = node_id_by_name.get(component_spec.name)
-                if writer_id:
-                    related_component_ids.append(writer_id)
-
-                # Then add preceding embedders in reverse order
-                for i in range(index - 1, -1, -1):
-                    related = spec.components[i]
-                    if related.component_type == ComponentType.EMBEDDER:
-                        related_id = node_id_by_name.get(related.name)
-                        if related_id:
-                            related_component_ids.append(related_id)
-
-                doc_store_node = DocumentStoreNode(
-                    pipeline_name=spec.name,
-                    root_dir=root_dir,
-                    component_node_ids=related_component_ids,
-                    author=username,
-                )
-                doc_store_dict = doc_store_node.to_dict()
-                document_store_nodes.append(doc_store_dict)
-
-                if writer_id:
-                    component_to_store_edges.append(
-                        (
-                            writer_id,
-                            doc_store_dict["id"],
-                            GraphRelationship.WRITES_TO.value,
-                        )
-                    )
-
-        if document_store_nodes:
-            self.graph_store.add_nodes_batch(document_store_nodes, "DocumentStore")
-
-        if component_to_store_edges:
-            self.graph_store.add_edges_batch(
-                component_to_store_edges,
-                source_label="Component",
-                target_label="DocumentStore",
-            )
 
         # Connect user to the first component in the pipeline
         if spec.components:
@@ -153,182 +104,32 @@ class GraphStorage:
                     target_label="Component",
                 )
 
-        # For retrieval pipelines, fetch DocumentStore components and create substitutions
-        if spec.pipeline_type == PipelineType.RETRIEVAL and spec.indexing_pipelines:
-            retrieval_edges: List[Tuple[str, str, str]] = []
-            retriever_to_docstore_edges: List[Tuple[str, str, str]] = []
-            node_substitutions: List[Dict[str, Any]] = []
-
-            for store_name, store_id in spec.indexing_pipelines.items():
-                # Get component IDs from DocumentStore
-                component_ids = self.graph_store.get_document_store_component_ids(
-                    store_id
-                )
-
-                if component_ids:
-                    # Get the actual component data
-                    components = self.graph_store.get_component_nodes_by_ids(
-                        component_ids
-                    )
-                    processed_component_ids = []
-
-                    for comp in components:
-                        comp_name = str(comp.get("component_name", "unknown"))
-                        comp_id = str(comp.get("id", "unknown"))
-                        comp_pipeline = str(comp.get("pipeline_name", "unknown"))
-
-                        # Check if this component needs substitution using the mapping
-                        from ..types.component_mappings import (
-                            get_component_substitution,
-                        )
-
-                        substitution = get_component_substitution(comp_name)
-
-                        if substitution:
-                            # Create substituted component node from registry
-                            from ..components import ComponentRegistry
-
-                            temp_registry = ComponentRegistry()
-                            target_spec = temp_registry.get_component_spec(
-                                substitution.target_component
-                            )
-
-                            if target_spec:
-
-                                # Use unique ID for this retriever instance
-                                component_id = f"{comp_pipeline}_{substitution.target_component}_for_{spec.name}"
-
-                                # component_name must match registry name exactly!
-                                component_name = (
-                                    substitution.target_component
-                                )  # e.g., "chroma_embedding_retriever"
-
-                                # Copy config from writer (especially root_dir for ChromaDB)
-                                if substitution.preserve_config:
-                                    config_json = str(
-                                        comp.get("component_config_json", "{}")
-                                    )
-                                else:
-                                    # Extract just the root_dir for document store location
-                                    import json as json_module
-
-                                    writer_config_json = str(
-                                        comp.get("component_config_json", "{}")
-                                    )
-                                    writer_config = json_module.loads(
-                                        writer_config_json
-                                    )
-                                    retriever_config = {}
-                                    if "root_dir" in writer_config:
-                                        retriever_config["root_dir"] = writer_config[
-                                            "root_dir"
-                                        ]
-                                    config_json = json_module.dumps(retriever_config)
-
-                                # Get author from original component node
-                                author = comp.get("author", username)
-
-                                # Create substituted component dictionary directly
-                                substituted_dict = {
-                                    "id": component_id,
-                                    "component_name": component_name,  # Registry name
-                                    "pipeline_name": spec.name,
-                                    "version": "1.0.0",
-                                    "author": author,
-                                    "component_config_json": config_json,
-                                }
-
-                                node_substitutions.append(substituted_dict)
-                                processed_component_ids.append(component_id)
-
-                                # Connect this component directly to the DocumentStore
-                                retriever_to_docstore_edges.append(
-                                    (
-                                        component_id,
-                                        store_id,
-                                        GraphRelationship.READS_FROM.value,
-                                    )
-                                )
-                            else:
-                                # Fallback to original if retriever spec not found
-                                processed_component_ids.append(comp_id)
-                        else:
-                            # Use original component
-                            processed_component_ids.append(comp_id)
-
-                    # Create edges in reverse order with substituted components
-                    # Reverse the processed component IDs
-                    reversed_component_ids = list(reversed(processed_component_ids))
-
-                    # Connect each component to the next in reverse order
-                    for i in range(len(reversed_component_ids) - 1):
-                        source_id = reversed_component_ids[i]
-                        target_id = reversed_component_ids[i + 1]
-                        retrieval_edges.append(
-                            (source_id, target_id, GraphRelationship.FLOWS_TO.value)
-                        )
-
-                    # Connect the last component (first in original order) to DocumentStore
-                    if reversed_component_ids:
-                        last_comp_id = reversed_component_ids[-1]
-                        retrieval_edges.append(
-                            (last_comp_id, store_id, GraphRelationship.READS_FROM.value)
-                        )
-
-                    # Connect last retrieval pipeline component to first component in reversed list (last in original)
-                    if processed_component_ids and spec.components:
-                        first_in_reversed = processed_component_ids[
-                            -1
-                        ]  # Last in original = first in reversed
-                        last_retrieval_comp = spec.components[-1]
-                        last_retrieval_id = node_id_by_name.get(
-                            last_retrieval_comp.name
-                        )
-
-                        if last_retrieval_id:
-                            retrieval_edges.append(
-                                (
-                                    last_retrieval_id,
-                                    first_in_reversed,
-                                    GraphRelationship.FLOWS_TO.value,
-                                )
-                            )
-
-            # Add substituted nodes to Neo4j
-            if node_substitutions:
-                self.graph_store.add_nodes_batch(node_substitutions, "Component")
-
-            # Add all retrieval edges to Neo4j
-            if retrieval_edges:
-                self.graph_store.add_edges_batch(
-                    retrieval_edges,
-                    source_label="Component",
-                    target_label="Component",
-                )
-
-            # Add retriever-to-DocumentStore edges separately
-            if retriever_to_docstore_edges:
-                self.graph_store.add_edges_batch(
-                    retriever_to_docstore_edges,
-                    source_label="Component",
-                    target_label="DocumentStore",
-                )
+        # Retrieval pipelines will be handled separately
+        # No need to store graph for retrieval - they're built dynamically from indexing metadata
+        if spec.pipeline_type == PipelineType.RETRIEVAL:
+            self.logger.info(
+                f"Retrieval pipeline '{spec.name}' - will be built dynamically from indexing pipeline metadata"
+            )
 
     def build_pipeline_graph(
-        self, spec: PipelineSpec, username: str = "test_user"
+        self,
+        spec: PipelineSpec,
+        username: str = "test_user",
+        branch_id: Optional[str] = None,
     ) -> None:
         """Build a graph representation of the pipeline specification.
 
         Args:
             spec: Pipeline specification
             username: Username for pipeline ownership (defaults to "test_user")
+            branch_id: Optional branch identifier for retrieval pipeline branches
         """
 
         # Determine connections based on component order and dependencies
         connections = self._determine_connections(spec.components)
 
         # Create graph representation
-        self.create_pipeline_graph(spec, connections, username)
+        self.create_pipeline_graph(spec, connections, username, branch_id)
 
     def build_haystack_pipeline(self, spec: PipelineSpec) -> Any:
         """Build a Haystack pipeline from a pipeline specification."""

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 from .component_spec import ComponentSpec
 
@@ -22,8 +22,8 @@ class PipelineSpec:
     components: List[ComponentSpec]
     pipeline_type: PipelineType = PipelineType.INDEXING
     connections: List[Tuple[str, str]] = field(default_factory=list)
-    indexing_pipelines: Optional[Dict[str, str]] = (
-        None  # Maps store_name -> indexing_pipeline_name
+    indexing_pipelines: Optional[Union[List[str], Dict[str, str]]] = (
+        None  # List of pipeline names or dict mapping store_name -> indexing_pipeline_name
     )
 
     def __post_init__(self) -> None:

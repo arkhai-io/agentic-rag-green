@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 
 @dataclass
@@ -14,19 +14,40 @@ class ComponentNode:
     version: str
     author: str
     component_config: Dict[str, Any]
+    component_type: Optional[str] = None  # e.g., "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"
+    branch_id: Optional[str] = (
+        None  # For retrieval pipelines: identifies which indexing pipeline branch
+    )
     id: Optional[str] = None  # Auto-generated if not provided
+    cache_key: Optional[str] = None  # Pipeline-agnostic key for cache lookups
 
     def __post_init__(self) -> None:
-        """Generate ID if not provided."""
+        """Generate ID and cache_key if not provided."""
         if self.id is None:
-            # Create deterministic hash from: component_name__pipeline_name__version__author__component_config
+            # Create deterministic hash from: component_name__pipeline_name__version__author__branch_id
             import hashlib
+            import json
 
             combined = f"{self.component_name}__{self.pipeline_name}__{self.version}__{self.author}"
+
+            # Include branch_id if provided (for retrieval pipeline branches)
+            if self.branch_id:
+                combined += f"__{self.branch_id}"
 
             # Generate SHA-256 hash and take first 12 characters for readability
             hash_obj = hashlib.sha256(combined.encode("utf-8"))
             self.id = f"comp_{hash_obj.hexdigest()[:12]}"
+
+        # Generate pipeline-agnostic cache key (component_type + config + author)
+        if self.cache_key is None:
+            import hashlib
+
+            # Use component_type + config for cache sharing across pipelines
+            config_str = json.dumps(self.component_config, sort_keys=True)
+            cache_combined = f"{self.component_type}__{config_str}__{self.author}"
+
+            cache_hash = hashlib.sha256(cache_combined.encode("utf-8"))
+            self.cache_key = f"cache_{cache_hash.hexdigest()[:12]}"
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for Neo4j insertion."""
@@ -37,14 +58,23 @@ class ComponentNode:
             self.component_config, sort_keys=True, separators=(",", ":")
         )
 
-        return {
+        result = {
             "id": self.id,
             "component_name": self.component_name,
             "pipeline_name": self.pipeline_name,
             "version": self.version,
             "author": self.author,
             "component_config_json": config_json,
+            "cache_key": self.cache_key,
         }
+
+        if self.component_type:
+            result["component_type"] = self.component_type
+
+        if self.branch_id:
+            result["branch_id"] = self.branch_id
+
+        return result
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ComponentNode":
@@ -60,39 +90,11 @@ class ComponentNode:
             version=data["version"],
             author=data["author"],
             component_config=component_config,
+            component_type=data.get("component_type"),
+            branch_id=data.get("branch_id"),
             id=data.get("id"),
+            cache_key=data.get("cache_key"),
         )
-
-
-@dataclass
-class DocumentStoreNode:
-    """Minimal definition for a persisted document store."""
-
-    pipeline_name: str
-    root_dir: str
-    component_node_ids: List[str]
-    author: str = "test_user"
-    version: str = "1.0.0"
-    id: Optional[str] = None
-
-    def __post_init__(self) -> None:
-        if self.id is None:
-            import hashlib
-
-            hash_input = (
-                f"{self.pipeline_name}__{self.root_dir}__{self.author}__{self.version}"
-            )
-            self.id = f"docstore_{hashlib.sha256(hash_input.encode('utf-8')).hexdigest()[:12]}"
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "id": self.id,
-            "pipeline_name": self.pipeline_name,
-            "root_dir": self.root_dir,
-            "component_node_ids": self.component_node_ids,
-            "author": self.author,
-            "version": self.version,
-        }
 
 
 @dataclass

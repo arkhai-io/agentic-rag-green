@@ -169,6 +169,7 @@ class PipelineRunner:
 
         for comp_data in components_data:
             comp_id = comp_data.get("id")
+            cache_key = comp_data.get("cache_key")  # Pipeline-agnostic cache key
             node_labels = comp_data.get("node_labels", [])
 
             # Skip DocumentStore nodes - they're created automatically by components
@@ -227,6 +228,7 @@ class PipelineRunner:
                             component_name=comp_name,
                             graph_store=self.graph_store,
                             username=self.username,
+                            cache_key=cache_key,  # Use pipeline-agnostic cache key
                             retrieve_from_ipfs=True,
                         )
                     else:

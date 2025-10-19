@@ -24,6 +24,9 @@ class ComponentSpec:
     # NEW: Store the final merged config right here
     runtime_config: Dict[str, Any] = field(default_factory=dict)
 
+    # Store the full type string (e.g., "EMBEDDER.SENTENCE_TRANSFORMERS_DOC")
+    full_type: str = ""
+
     def is_compatible_input(self, data_type: DataType) -> bool:
         """Check if a data type is compatible with this component's inputs."""
         return data_type in self.input_types
