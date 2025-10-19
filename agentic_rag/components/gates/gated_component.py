@@ -42,6 +42,7 @@ class GatedComponent:
         component_name: str,
         graph_store: GraphStore,
         username: str,
+        cache_key: Optional[str] = None,
         retrieve_from_ipfs: bool = True,
     ):
         """
@@ -53,6 +54,7 @@ class GatedComponent:
             component_name: Human-readable name
             graph_store: Neo4j graph store
             username: User who owns this pipeline/data
+            cache_key: Pipeline-agnostic cache key for cache lookups
             retrieve_from_ipfs: If True, retrieves cached data from IPFS (default: False)
         """
         self.component = component
@@ -60,13 +62,16 @@ class GatedComponent:
         self.component_name = component_name
         self.graph_store = graph_store
         self.username = username
+        self.cache_key = (
+            cache_key or component_id
+        )  # Fall back to component_id if no cache_key
         self.logger = get_logger(f"{__name__}.{component_name}", username=username)
         self.metrics = MetricsCollector(username=username)
 
-        # Create gates with IPFS retrieval enabled
+        # Create gates with IPFS retrieval enabled (use cache_key for lookups)
         self.ingate = InGate(
             graph_store=graph_store,
-            component_id=component_id,
+            component_id=self.cache_key,  # Use cache_key for lookups
             component_name=component_name,
             username=username,
             retrieve_from_ipfs=True,  # Always retrieve from IPFS for cached results
@@ -74,7 +79,7 @@ class GatedComponent:
 
         self.outgate = OutGate(
             graph_store=graph_store,
-            component_id=component_id,
+            component_id=self.cache_key,  # Use cache_key for storage
             component_name=component_name,
             username=username,
         )

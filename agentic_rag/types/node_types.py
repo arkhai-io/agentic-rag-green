@@ -19,12 +19,14 @@ class ComponentNode:
         None  # For retrieval pipelines: identifies which indexing pipeline branch
     )
     id: Optional[str] = None  # Auto-generated if not provided
+    cache_key: Optional[str] = None  # Pipeline-agnostic key for cache lookups
 
     def __post_init__(self) -> None:
-        """Generate ID if not provided."""
+        """Generate ID and cache_key if not provided."""
         if self.id is None:
             # Create deterministic hash from: component_name__pipeline_name__version__author__branch_id
             import hashlib
+            import json
 
             combined = f"{self.component_name}__{self.pipeline_name}__{self.version}__{self.author}"
 
@@ -35,6 +37,17 @@ class ComponentNode:
             # Generate SHA-256 hash and take first 12 characters for readability
             hash_obj = hashlib.sha256(combined.encode("utf-8"))
             self.id = f"comp_{hash_obj.hexdigest()[:12]}"
+
+        # Generate pipeline-agnostic cache key (component_type + config + author)
+        if self.cache_key is None:
+            import hashlib
+
+            # Use component_type + config for cache sharing across pipelines
+            config_str = json.dumps(self.component_config, sort_keys=True)
+            cache_combined = f"{self.component_type}__{config_str}__{self.author}"
+
+            cache_hash = hashlib.sha256(cache_combined.encode("utf-8"))
+            self.cache_key = f"cache_{cache_hash.hexdigest()[:12]}"
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for Neo4j insertion."""
@@ -52,6 +65,7 @@ class ComponentNode:
             "version": self.version,
             "author": self.author,
             "component_config_json": config_json,
+            "cache_key": self.cache_key,
         }
 
         if self.component_type:
@@ -79,6 +93,7 @@ class ComponentNode:
             component_type=data.get("component_type"),
             branch_id=data.get("branch_id"),
             id=data.get("id"),
+            cache_key=data.get("cache_key"),
         )
 
 
