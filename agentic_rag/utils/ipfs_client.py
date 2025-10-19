@@ -128,6 +128,8 @@ class LighthouseClient:
 
         Uses Lighthouse API first (authenticated), falls back to public gateways.
         """
+        errors = []
+
         # Try Lighthouse API first (authenticated, more reliable)
         if self.api_key:
             try:
@@ -136,8 +138,8 @@ class LighthouseClient:
                 response = requests.get(url, headers=headers, timeout=10)
                 response.raise_for_status()
                 return bytes(response.content)
-            except requests.exceptions.RequestException:
-                pass  # Try fallback gateways
+            except requests.exceptions.RequestException as e:
+                errors.append(f"Lighthouse: {type(e).__name__}: {str(e)}")
 
         # Fallback to public gateways (no auth needed)
         gateways = [
@@ -150,10 +152,14 @@ class LighthouseClient:
                 response = requests.get(url, timeout=10)
                 response.raise_for_status()
                 return bytes(response.content)
-            except requests.exceptions.RequestException:
-                continue  # Try next gateway
+            except requests.exceptions.RequestException as e:
+                errors.append(f"{gateway}: {type(e).__name__}: {str(e)}")
 
-        raise ConnectionError(f"All IPFS retrieval methods failed for CID: {cid}")
+        error_msg = (
+            f"All IPFS retrieval methods failed for CID: {cid}\nErrors:\n"
+            + "\n".join(f"  - {e}" for e in errors)
+        )
+        raise ConnectionError(error_msg)
 
     def retrieve_text(self, cid: str) -> str:
         """

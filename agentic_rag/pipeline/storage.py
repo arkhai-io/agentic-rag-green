@@ -8,8 +8,6 @@ from ..components import ComponentRegistry, GraphStore
 from ..types import (
     ComponentNode,
     ComponentSpec,
-    ComponentType,
-    DocumentStoreNode,
     GraphRelationship,
     PipelineSpec,
     PipelineType,
@@ -72,62 +70,6 @@ class GraphStorage:
         # Add component nodes
         self.logger.debug(f"Adding {len(nodes)} component nodes to graph")
         self.graph_store.add_nodes_batch(nodes, "Component")
-
-        document_store_nodes: List[Dict[str, Any]] = []
-        component_to_store_edges: List[Tuple[str, str, str]] = []
-
-        if spec.pipeline_type == PipelineType.INDEXING:
-            # For indexing pipelines, create new DocumentStore nodes
-            for index, component_spec in enumerate(spec.components):
-                if component_spec.name != "chroma_document_writer":
-                    continue
-
-                writer_config = component_spec.get_config()
-                root_dir = writer_config.get("root_dir", ".")
-
-                # Collect node IDs in forward order (embedders first, then writer)
-                related_component_ids: List[str] = []
-
-                # First add preceding embedders in forward order
-                for i in range(index):
-                    related = spec.components[i]
-                    if related.component_type == ComponentType.EMBEDDER:
-                        related_id = node_id_by_name.get(related.name)
-                        if related_id:
-                            related_component_ids.append(related_id)
-
-                # Then add writer last
-                writer_id = node_id_by_name.get(component_spec.name)
-                if writer_id:
-                    related_component_ids.append(writer_id)
-
-                doc_store_node = DocumentStoreNode(
-                    pipeline_name=spec.name,
-                    root_dir=root_dir,
-                    component_node_ids=related_component_ids,
-                    author=username,
-                )
-                doc_store_dict = doc_store_node.to_dict()
-                document_store_nodes.append(doc_store_dict)
-
-                if writer_id:
-                    component_to_store_edges.append(
-                        (
-                            writer_id,
-                            doc_store_dict["id"],
-                            GraphRelationship.WRITES_TO.value,
-                        )
-                    )
-
-        if document_store_nodes:
-            self.graph_store.add_nodes_batch(document_store_nodes, "DocumentStore")
-
-        if component_to_store_edges:
-            self.graph_store.add_edges_batch(
-                component_to_store_edges,
-                source_label="Component",
-                target_label="DocumentStore",
-            )
 
         # Connect user to the first component in the pipeline
         if spec.components:

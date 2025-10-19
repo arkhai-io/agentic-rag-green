@@ -191,4 +191,11 @@ logs/
 tmp/
 temp/
 
+# Data directories
+data/
+sample_data/
+
+# Test scripts
+test_retrieval_pipeline.py
+
 ./

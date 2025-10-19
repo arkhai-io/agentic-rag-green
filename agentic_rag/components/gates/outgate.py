@@ -121,6 +121,10 @@ class OutGate:
         self.logger.info(
             f"Storing {len(output_records)} outputs to cache (component: {self.component_name})"
         )
+        self.logger.info(
+            f"💾 Storage details: input_fp={input_fingerprint[:20]}..., "
+            f"component_id={self.component_id}, config_hash={config_hash}"
+        )
         self.graph_store.store_transformation_batch(
             input_fingerprint=input_fingerprint,
             input_ipfs_hash=self._upload_to_ipfs(input_data),
@@ -133,7 +137,9 @@ class OutGate:
             processing_time_ms=processing_time_ms,
         )
 
-        self.logger.debug(f"Stored with input fingerprint: {input_fingerprint}")
+        self.logger.debug(
+            f"✓ Stored to Neo4j with input fingerprint: {input_fingerprint}"
+        )
 
         return {
             "input_fingerprint": input_fingerprint,
@@ -181,9 +187,16 @@ class OutGate:
         Returns:
             IPFS CID (hash)
         """
-        result = self.ipfs_client.upload_any(data)
-        ipfs_hash: str = result["Hash"]
-        return ipfs_hash
+        try:
+            result = self.ipfs_client.upload_any(data)
+            ipfs_hash: str = result["Hash"]
+            self.logger.debug(
+                f"📤 IPFS upload successful: CID={ipfs_hash}, Size={result.get('Size', 'unknown')}"
+            )
+            return ipfs_hash
+        except Exception as e:
+            self.logger.error(f"❌ IPFS upload failed: {type(e).__name__}: {str(e)}")
+            raise
 
     def _serialize_for_fingerprint(self, data: Any) -> str:
         """

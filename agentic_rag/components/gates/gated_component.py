@@ -147,30 +147,27 @@ class GatedComponent:
         # Extract outputs
         output_items = self._extract_output_data(component_output)
 
-        # Store new results to cache
-        if output_items and uncached_items:
-            # For now, assume 1→1 mapping (each input → corresponding output)
-            if len(uncached_items) == len(output_items):
-                # 1→1: zip inputs and outputs
-                for input_item, output_item in zip(uncached_items, output_items):
-                    try:
+        # Store new results to cache - process each item individually to maintain correct mappings
+        if uncached_items:
+            for input_item in uncached_items:
+                try:
+                    # Run component on single item to get its specific outputs
+                    kwargs_single = kwargs.copy()
+                    if input_param:
+                        kwargs_single[input_param] = [input_item]
+                    single_output = self.component.run(**kwargs_single)
+                    single_output_items = self._extract_output_data(single_output)
+
+                    # Store: input → its outputs (handles both 1→1 and 1→N)
+                    if single_output_items:
                         self.outgate.store(
                             input_data=input_item,
-                            output_data=[output_item],  # Single output per input
+                            output_data=single_output_items,
                             component_config=component_config,
                         )
-                    except Exception:
-                        pass  # Continue caching other items
-            else:
-                # 1→N: Store all outputs for each input (chunking case)
-                try:
-                    self.outgate.store(
-                        input_data=uncached_items[0] if uncached_items else None,
-                        output_data=output_items,
-                        component_config=component_config,
-                    )
-                except Exception:
-                    pass  # Cache storage failed, but component executed successfully
+                except Exception as e:
+                    self.logger.warning(f"Failed to cache item: {e}")
+                    pass  # Continue with next item
 
         end_time = time.time()
 

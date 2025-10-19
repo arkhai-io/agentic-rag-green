@@ -85,60 +85,6 @@ class GraphStore:
                 """
                 session.run(query, edges=edge_list)
 
-    def get_document_store_component_ids(self, store_id: str) -> List[str]:
-        """Fetch the component_node_ids from a DocumentStore node by exact ID."""
-        with self.driver.session(database="neo4j") as session:
-            query = """
-                MATCH (d:DocumentStore {id: $store_id})
-                RETURN d.component_node_ids AS component_ids
-            """
-            result = session.run(query, store_id=store_id).single()
-            if result and result["component_ids"]:
-                return list(result["component_ids"])
-            return []
-
-    def get_document_store_by_pipeline(
-        self, pipeline_name: str, username: Optional[str] = None
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Get DocumentStore node for a specific pipeline.
-
-        Args:
-            pipeline_name: Name of the pipeline (e.g., 'pipeline_0')
-            username: Optional username filter for multi-tenant isolation
-
-        Returns:
-            DocumentStore node data as dict, or None if not found
-
-        Example:
-            >>> store = graph_store.get_document_store_by_pipeline("pipeline_0", "alice")
-            >>> print(store["root_dir"])  # "./data/alice"
-            >>> print(store["component_node_ids"])  # ["comp_...", "comp_..."]
-        """
-        with self.driver.session(database="neo4j") as session:
-            if username:
-                # Query with username filter for multi-tenant isolation
-                query = """
-                    MATCH (d:DocumentStore {pipeline_name: $pipeline_name, author: $username})
-                    RETURN d
-                    LIMIT 1
-                """
-                result = session.run(
-                    query, pipeline_name=pipeline_name, username=username
-                ).single()
-            else:
-                # Query without username filter
-                query = """
-                    MATCH (d:DocumentStore {pipeline_name: $pipeline_name})
-                    RETURN d
-                    LIMIT 1
-                """
-                result = session.run(query, pipeline_name=pipeline_name).single()
-
-            if result:
-                return dict(result["d"])
-            return None
-
     def get_component_nodes_by_ids(
         self, component_ids: List[str]
     ) -> List[Dict[str, object]]:
@@ -153,6 +99,41 @@ class GraphStore:
                 RETURN c
             """
             results = session.run(query, ids=component_ids).data()
+            return [dict(r["c"]) for r in results]
+
+    def get_components_by_pipeline(
+        self, pipeline_name: str, username: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all Component nodes for a specific pipeline.
+
+        Args:
+            pipeline_name: Name of the pipeline (e.g., 'index_1')
+            username: Optional username filter for multi-tenant isolation
+
+        Returns:
+            List of component node dictionaries with all properties
+        """
+        with self.driver.session(database="neo4j") as session:
+            if username:
+                # Query with username filter for multi-tenant isolation
+                query = """
+                    MATCH (c:Component {pipeline_name: $pipeline_name, author: $username})
+                    RETURN c
+                    ORDER BY c.id
+                """
+                results = session.run(
+                    query, pipeline_name=pipeline_name, username=username
+                ).data()
+            else:
+                # Query without username filter
+                query = """
+                    MATCH (c:Component {pipeline_name: $pipeline_name})
+                    RETURN c
+                    ORDER BY c.id
+                """
+                results = session.run(query, pipeline_name=pipeline_name).data()
+
             return [dict(r["c"]) for r in results]
 
     def validate_user_exists(self, username: str) -> bool:

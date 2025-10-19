@@ -111,6 +111,12 @@ class InGate:
             config_hash=config_hash,
         )
 
+        # DEBUG: Log cache lookup results
+        self.logger.info(
+            f"🔍 Cache lookup: queried {len(fingerprint_list)} fingerprints, "
+            f"found {len(cache_map)} cached results (component_id={self.component_id})"
+        )
+
         # Split into cached vs uncached
         cached = []
         uncached = []

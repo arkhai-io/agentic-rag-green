@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 
 @dataclass
@@ -80,37 +80,6 @@ class ComponentNode:
             branch_id=data.get("branch_id"),
             id=data.get("id"),
         )
-
-
-@dataclass
-class DocumentStoreNode:
-    """Minimal definition for a persisted document store."""
-
-    pipeline_name: str
-    root_dir: str
-    component_node_ids: List[str]
-    author: str = "test_user"
-    version: str = "1.0.0"
-    id: Optional[str] = None
-
-    def __post_init__(self) -> None:
-        if self.id is None:
-            import hashlib
-
-            hash_input = (
-                f"{self.pipeline_name}__{self.root_dir}__{self.author}__{self.version}"
-            )
-            self.id = f"docstore_{hashlib.sha256(hash_input.encode('utf-8')).hexdigest()[:12]}"
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "id": self.id,
-            "pipeline_name": self.pipeline_name,
-            "root_dir": self.root_dir,
-            "component_node_ids": self.component_node_ids,
-            "author": self.author,
-            "version": self.version,
-        }
 
 
 @dataclass

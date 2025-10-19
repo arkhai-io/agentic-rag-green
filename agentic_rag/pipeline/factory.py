@@ -214,69 +214,59 @@ class PipelineFactory:
 
         return indexing_pipelines
 
-    def _query_docstore_nodes(
+    def _fetch_indexing_pipeline_components(
         self, indexing_pipelines: List[str], username: str
-    ) -> Dict[str, Dict[str, Any]]:
-        """Step 2: Query DocumentStore metadata for each indexing pipeline."""
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Step 2: Fetch embedder and writer components from each indexing pipeline.
+
+        We query all components for each pipeline and filter for embedder/writer pairs.
+        """
         if not self.graph_store:
             raise RuntimeError("Cannot build retrieval pipeline without a graph store")
 
-        docstore_nodes = {}
+        indexing_pipeline_components: Dict[str, List[Dict[str, Any]]] = {}
 
         for indexing_pipeline_name in indexing_pipelines:
-            self.logger.debug(f"Querying DocumentStore for: {indexing_pipeline_name}")
+            self.logger.debug(f"Querying components for: {indexing_pipeline_name}")
 
-            docstore_node = self.graph_store.get_document_store_by_pipeline(
+            # Get all components for this pipeline
+            all_components = self.graph_store.get_components_by_pipeline(
                 pipeline_name=indexing_pipeline_name, username=username
             )
 
-            if not docstore_node:
+            if not all_components:
                 raise ValueError(
-                    f"DocumentStore not found for '{indexing_pipeline_name}' "
-                    f"(user: {username})"
+                    f"No components found for '{indexing_pipeline_name}' (user: {username})"
                 )
 
-            docstore_nodes[indexing_pipeline_name] = docstore_node
-            self.logger.info(
-                f"✓ Found DocumentStore for '{indexing_pipeline_name}': "
-                f"root_dir={docstore_node.get('root_dir')}"
-            )
+            # Filter for embedder and writer components (needed for retrieval)
+            # Separate them to ensure correct order: embedder(s) first, then writer
+            embedders = []
+            writers = []
 
-        return docstore_nodes
+            for component in all_components:
+                component_name = component.get("component_name", "")
+                if "embedder" in component_name.lower():
+                    embedders.append(component)
+                elif "writer" in component_name.lower():
+                    writers.append(component)
 
-    def _fetch_component_nodes(
-        self, docstore_nodes: Dict[str, Dict[str, Any]]
-    ) -> Dict[str, List[Dict[str, Any]]]:
-        """Step 3: Fetch component nodes for each DocumentStore."""
-        indexing_pipeline_components: Dict[str, List[Dict[str, Any]]] = {}
+            # Combine in correct order: embedders first, then writers
+            relevant_components = embedders + writers
 
-        for indexing_pipeline_name, docstore_node in docstore_nodes.items():
-            component_node_ids = docstore_node.get("component_node_ids", [])
-
-            if not component_node_ids:
+            if not relevant_components:
                 self.logger.warning(
-                    f"No component_node_ids for '{indexing_pipeline_name}'"
+                    f"No embedder/writer components found for '{indexing_pipeline_name}'"
                 )
                 indexing_pipeline_components[indexing_pipeline_name] = []
                 continue
 
-            if not self.graph_store:
-                raise RuntimeError("Cannot fetch components without a graph store")
+            indexing_pipeline_components[indexing_pipeline_name] = relevant_components
 
-            component_nodes = self.graph_store.get_component_nodes_by_ids(
-                component_node_ids
-            )
-
-            if not component_nodes:
-                raise ValueError(
-                    f"Failed to fetch components for '{indexing_pipeline_name}'"
-                )
-
-            indexing_pipeline_components[indexing_pipeline_name] = component_nodes
-
-            component_names = [n.get("component_name") for n in component_nodes]
+            component_names = [c.get("component_name") for c in relevant_components]
             self.logger.info(
-                f"✓ Retrieved {len(component_nodes)} component(s) for "
+                f"✓ Retrieved {len(relevant_components)} component(s) for "
                 f"'{indexing_pipeline_name}': {component_names}"
             )
 
@@ -343,7 +333,8 @@ class PipelineFactory:
             indexing_pipeline_name,
             components_from_index,
         ) in indexing_pipeline_components.items():
-            pipeline_config = dict(config)
+            # Copy config but remove _pipeline_name (we pass it as parameter instead)
+            pipeline_config = {k: v for k, v in config.items() if k != "_pipeline_name"}
 
             for component_node in components_from_index:
                 component_name = component_node.get("component_name", "")
@@ -401,25 +392,24 @@ class PipelineFactory:
         # Step 1: Extract indexing pipeline names
         indexing_pipelines = self._extract_indexing_pipelines(config)
 
-        # Step 2: Query DocumentStore nodes
-        docstore_nodes = self._query_docstore_nodes(indexing_pipelines, username)
+        # Step 2: Fetch embedder and writer components
+        indexing_pipeline_components = self._fetch_indexing_pipeline_components(
+            indexing_pipelines, username
+        )
 
-        # Step 3: Fetch component nodes
-        indexing_pipeline_components = self._fetch_component_nodes(docstore_nodes)
-
-        # Step 4: Build component specs for each pipeline
+        # Step 3: Build component specs for each pipeline
         retrieval_pipelines_specs = self._build_component_specs(
             component_specs, indexing_pipeline_components
         )
         print("Specs:", retrieval_pipelines_specs)
 
-        # Step 5: Build configs for each pipeline
+        # Step 4: Build configs for each pipeline
         retrieval_pipelines_configs = self._build_configs(
             config, indexing_pipeline_components
         )
         print("Configs:", retrieval_pipelines_configs)
 
-        # Step 6: Build N pipelines using standard indexing builder
+        # Step 5: Build N pipelines using standard indexing builder
         # All branches share same pipeline name but have unique component IDs via branch_id
         built_pipelines = []
 
