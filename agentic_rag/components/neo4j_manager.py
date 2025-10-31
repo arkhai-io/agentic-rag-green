@@ -198,14 +198,14 @@ class GraphStore:
             # Get current node and ALL its connections (cross pipeline boundaries)
             query = """
                 MATCH (c {id: $component_id})
-                WHERE c:Component OR c:DocumentStore
+                WHERE c:Component
 
                 // Get ALL connections (don't filter by pipeline)
-                OPTIONAL MATCH (c)-[:FLOWS_TO|READS_FROM|WRITES_TO]->(next)
-                WHERE next:Component OR next:DocumentStore
+                OPTIONAL MATCH (c)-[:FLOWS_TO]->(next)
+                WHERE next:Component
 
-                OPTIONAL MATCH (prev)-[:FLOWS_TO|READS_FROM|WRITES_TO]->(c)
-                WHERE prev:Component OR prev:DocumentStore
+                OPTIONAL MATCH (prev)-[:FLOWS_TO]->(c)
+                WHERE prev:Component
 
                 RETURN c,
                        collect(DISTINCT next.id) AS next_components,

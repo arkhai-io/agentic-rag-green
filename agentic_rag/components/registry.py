@@ -213,6 +213,21 @@ class ComponentRegistry:
             )
         )
 
+        # Prompt Builders
+        self.register_component(
+            ComponentSpec(
+                name="prompt_builder",
+                component_type=ComponentType.GENERATOR,  # Using GENERATOR type since it's part of generation pipeline
+                haystack_class="haystack.components.builders.PromptBuilder",
+                input_types=[DataType.LIST_DOCUMENT, DataType.STRING],
+                output_types=[DataType.STRING],
+                pipeline_usage=PipelineUsage.RETRIEVAL,
+                dependencies=[],
+                default_config={},
+                parallelizable=False,
+            )
+        )
+
         # Generators - Only verified existing ones
         self.register_component(
             ComponentSpec(

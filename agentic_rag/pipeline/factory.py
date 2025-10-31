@@ -241,19 +241,19 @@ class PipelineFactory:
                 )
 
             # Filter for embedder and writer components (needed for retrieval)
-            # Separate them to ensure correct order: embedder(s) first, then writer
-            embedders = []
-            writers = []
+            # Each indexing pipeline should have exactly one embedder and one writer
+            embedder = None
+            writer = None
 
             for component in all_components:
                 component_name = component.get("component_name", "")
                 if "embedder" in component_name.lower():
-                    embedders.append(component)
+                    embedder = component
                 elif "writer" in component_name.lower():
-                    writers.append(component)
+                    writer = component
 
-            # Combine in correct order: embedders first, then writers
-            relevant_components = embedders + writers
+            # Combine in order: embedder first, then writer
+            relevant_components = [c for c in [embedder, writer] if c is not None]
 
             if not relevant_components:
                 self.logger.warning(
@@ -271,6 +271,34 @@ class PipelineFactory:
             )
 
         return indexing_pipeline_components
+
+    def _substitute_components_for_retrieval(self, component_type: str) -> str:
+        """
+        Substitute indexing components with retrieval equivalents.
+
+        Maps:
+        - EMBEDDER.SENTENCE_TRANSFORMERS_DOC → EMBEDDER.SENTENCE_TRANSFORMERS (text embedder for queries)
+        - WRITER.CHROMA_DOCUMENT_WRITER → RETRIEVER.CHROMA_EMBEDDING
+
+        Args:
+            component_type: Original component type from indexing pipeline
+
+        Returns:
+            Substituted component type for retrieval, or original if no mapping
+        """
+        # Define substitution mappings
+        RETRIEVAL_SUBSTITUTIONS = {
+            "EMBEDDER.SENTENCE_TRANSFORMERS_DOC": "EMBEDDER.SENTENCE_TRANSFORMERS",  # Doc embedder → Text embedder
+            "WRITER.CHROMA_DOCUMENT_WRITER": "RETRIEVER.CHROMA_EMBEDDING",
+            # Add more mappings here as needed
+        }
+
+        substituted = RETRIEVAL_SUBSTITUTIONS.get(component_type, component_type)
+
+        if substituted != component_type:
+            self.logger.debug(f"  Substituted: {component_type} → {substituted}")
+
+        return substituted
 
     def _build_component_specs(
         self,
@@ -290,32 +318,22 @@ class PipelineFactory:
                 spec_type = spec_item.get("type", "")
 
                 if spec_type == "INDEX":
-                    self.logger.info(
-                        f"Injecting {len(components_from_index)} components "
-                        f"from '{indexing_pipeline_name}'"
-                    )
-
                     for component_node in components_from_index:
                         component_type = component_node.get("component_type")
-
                         if not component_type:
-                            self.logger.warning(
-                                f"Component {component_node.get('component_name')} "
-                                "has no component_type, skipping"
-                            )
                             continue
 
-                        pipeline_component_specs.append({"type": component_type})
-                        self.logger.debug(f"  Added: {component_type}")
+                        # Substitute component for retrieval (e.g., Writer → Retriever)
+                        retrieval_component_type = (
+                            self._substitute_components_for_retrieval(component_type)
+                        )
+                        pipeline_component_specs.append(
+                            {"type": retrieval_component_type}
+                        )
                 else:
                     pipeline_component_specs.append(spec_item)
 
             retrieval_pipelines_specs[indexing_pipeline_name] = pipeline_component_specs
-
-            self.logger.info(
-                f"Built specs for '{indexing_pipeline_name}': "
-                f"{len(pipeline_component_specs)} components"
-            )
 
         return retrieval_pipelines_specs
 
@@ -338,23 +356,40 @@ class PipelineFactory:
 
             for component_node in components_from_index:
                 component_name = component_node.get("component_name", "")
+                component_type = component_node.get("component_type", "")
                 component_config_json = component_node.get(
                     "component_config_json", "{}"
                 )
 
                 component_config = json_module.loads(component_config_json)
-                pipeline_config[component_name] = component_config
 
-                self.logger.debug(
-                    f"Added config for '{component_name}': {component_config}"
+                # Substitute component type for retrieval (e.g., Writer → Retriever)
+                retrieval_component_type = self._substitute_components_for_retrieval(
+                    component_type
                 )
 
-            retrieval_pipelines_configs[indexing_pipeline_name] = pipeline_config
+                # Get the retrieval component name from the substituted type
+                if retrieval_component_type != component_type:
+                    # Parse the retrieval type to get the actual component name
+                    retrieval_component_name = get_component_value(
+                        retrieval_component_type
+                    )
 
-            self.logger.info(
-                f"Built config for '{indexing_pipeline_name}': "
-                f"{len(pipeline_config)} keys"
-            )
+                    # Merge configs: start with indexing component's config
+                    merged_config = component_config.copy()
+
+                    # Override with user-provided config for the retrieval component
+                    # This allows user to override model, top_k, etc. while keeping root_dir
+                    user_config = config.get(retrieval_component_name, {})
+                    merged_config.update(user_config)
+
+                    # Store under the retrieval component's name
+                    pipeline_config[retrieval_component_name] = merged_config
+                else:
+                    # No substitution, use original name
+                    pipeline_config[component_name] = component_config
+
+            retrieval_pipelines_configs[indexing_pipeline_name] = pipeline_config
 
         return retrieval_pipelines_configs
 
@@ -401,13 +436,11 @@ class PipelineFactory:
         retrieval_pipelines_specs = self._build_component_specs(
             component_specs, indexing_pipeline_components
         )
-        print("Specs:", retrieval_pipelines_specs)
 
         # Step 4: Build configs for each pipeline
         retrieval_pipelines_configs = self._build_configs(
             config, indexing_pipeline_components
         )
-        print("Configs:", retrieval_pipelines_configs)
 
         # Step 5: Build N pipelines using standard indexing builder
         # All branches share same pipeline name but have unique component IDs via branch_id
@@ -417,32 +450,20 @@ class PipelineFactory:
             pipeline_spec = retrieval_pipelines_specs[indexing_pipeline_name]
             pipeline_config = retrieval_pipelines_configs[indexing_pipeline_name]
 
-            self.logger.info(
-                f"Building retrieval pipeline '{pipeline_name}' branch "
-                f"for indexing pipeline '{indexing_pipeline_name}'"
-            )
-
-            # Use the indexing pipeline builder (reuse existing logic)
-            # Pass indexing_pipeline_name as branch_id to ensure unique component IDs
+            # Build pipeline using indexing builder with branch_id
             built_pipeline = self._build_indexing_pipeline(
                 component_specs=pipeline_spec,
-                pipeline_name=pipeline_name,  # Same name for all branches
+                pipeline_name=pipeline_name,
                 config=pipeline_config,
                 username=username,
-                branch_id=indexing_pipeline_name,  # Unique branch identifier
+                branch_id=indexing_pipeline_name,
             )
 
-            # Store reference to source indexing pipeline
             built_pipeline.indexing_pipelines = [indexing_pipeline_name]
-
             built_pipelines.append(built_pipeline)
-            self.logger.info(
-                f"✓ Built retrieval pipeline branch: {pipeline_name} -> {indexing_pipeline_name}"
-            )
 
         self.logger.info(
-            f"Successfully built {len(built_pipelines)} retrieval pipeline(s) "
-            f"all named '{pipeline_name}'"
+            f"Built {len(built_pipelines)} retrieval pipeline branch(es) for '{pipeline_name}'"
         )
 
         # Return the first one (they all have the same name)
