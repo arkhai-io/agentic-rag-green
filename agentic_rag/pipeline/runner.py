@@ -634,6 +634,8 @@ class PipelineRunner:
         """
         if type == "indexing" or type == PipelineUsage.INDEXING.value:
             return self._run_indexing_pipeline(pipeline_name, **kwargs)
+        elif type == "retrieval" or type == PipelineUsage.RETRIEVAL.value:
+            return self._run_retrieval_pipeline(pipeline_name, **kwargs)
         else:
             raise ValueError(
                 f"Unknown pipeline type: {type}. " "Must be 'indexing' or 'retrieval'"
@@ -673,22 +675,28 @@ class PipelineRunner:
             if not data_path:
                 raise ValueError("data_path is required in kwargs")
 
-            data_dir = Path(data_path)
-            if not data_dir.exists():
-                raise FileNotFoundError(f"Data directory not found: {data_dir}")
+            data_path_obj = Path(data_path)
+            if not data_path_obj.exists():
+                raise FileNotFoundError(f"Path not found: {data_path_obj}")
 
-            # Try to detect file type based on pipeline name or find any supported files
-            input_files: List[Any] = []
-            file_patterns = ["*.pdf", "*.txt", "*.md", "*.docx", "*.html"]
+            # Check if it's a file or directory
+            input_files: List[Path] = []
+            if data_path_obj.is_file():
+                # Direct file path
+                input_files = [data_path_obj]
+            else:
+                # Directory - glob for supported files
+                file_patterns = ["*.pdf", "*.txt", "*.md", "*.docx", "*.html"]
+                for pattern in file_patterns:
+                    input_files.extend(data_path_obj.glob(pattern))
 
-            for pattern in file_patterns:
-                input_files.extend(data_dir.glob(pattern))
-
-            if not input_files:
-                raise FileNotFoundError(f"No supported files found in {data_dir}")
+                if not input_files:
+                    raise FileNotFoundError(
+                        f"No supported files found in {data_path_obj}"
+                    )
 
             self.logger.info(f"Running indexing pipeline: {pipeline_name}")
-            self.logger.info(f"Found {len(input_files)} files in {data_dir}")
+            self.logger.info(f"Processing {len(input_files)} file(s)")
 
             # Run the pipeline with the file sources
             sources = [str(file_path) for file_path in input_files]
@@ -713,7 +721,7 @@ class PipelineRunner:
                     metadata={
                         "type": "indexing",
                         "files_processed": len(input_files),
-                        "data_path": str(data_dir),
+                        "data_path": str(data_path_obj),
                     },
                 )
 
@@ -740,3 +748,89 @@ class PipelineRunner:
                 )
 
             raise
+
+    def _run_retrieval_pipeline(
+        self, pipeline_name: str, **kwargs: Any
+    ) -> Dict[str, Any]:
+        """
+        Execute all branches of a retrieval pipeline and aggregate results.
+
+        Args:
+            pipeline_name: Name of the retrieval pipeline
+            **kwargs: Must include 'query' (str)
+
+        Returns:
+            Dict with query, branches (results per branch), documents (all docs combined)
+        """
+        query = kwargs.get("query")
+        if not query:
+            raise ValueError("'query' is required for retrieval pipelines")
+
+        self.logger.info(f"Running retrieval pipeline: {pipeline_name}")
+        self.logger.info(f"Query: {query}")
+
+        # Find all branch pipelines (e.g., "retrieval_pipeline_pipeline_small")
+        branch_pipelines = {}
+        for pipeline_key in self._haystack_pipelines.keys():
+            if pipeline_key.startswith(f"{pipeline_name}_"):
+                branch_id = pipeline_key[len(pipeline_name) + 1 :]
+                branch_pipelines[branch_id] = self._haystack_pipelines[pipeline_key]
+
+        if not branch_pipelines:
+            raise RuntimeError(
+                f"No branch pipelines found for '{pipeline_name}'. "
+                "Did you load the pipeline with PipelineRunner?"
+            )
+
+        self.logger.info(
+            f"Found {len(branch_pipelines)} branch(es): {list(branch_pipelines.keys())}"
+        )
+
+        # Run each branch
+        branch_results = {}
+        for branch_id, pipeline in branch_pipelines.items():
+            self.logger.info(f"Running branch: {branch_id}")
+            try:
+                # Run with query for embedder and prompt_builder
+                # This ensures we get documents from the retriever component
+                component_ids = (
+                    list(pipeline.graph.nodes.keys())
+                    if hasattr(pipeline, "graph")
+                    else []
+                )
+                result = pipeline.run(
+                    {"text": query, "query": query},
+                    include_outputs_from=set(component_ids) if component_ids else None,
+                )
+                branch_results[branch_id] = result
+            except Exception as e:
+                self.logger.error(f"Error in branch {branch_id}: {e}", exc_info=True)
+                branch_results[branch_id] = {"error": str(e)}
+
+        # Aggregate documents from all branches
+        all_documents = []
+        for branch_id, result in branch_results.items():
+            if isinstance(result, dict) and "error" not in result:
+                # Find documents in any component output
+                for comp_result in result.values():
+                    if isinstance(comp_result, dict) and "documents" in comp_result:
+                        docs = comp_result["documents"]
+                        # Tag each doc with branch_id
+                        for doc in docs:
+                            if hasattr(doc, "meta"):
+                                doc.meta["branch_id"] = branch_id
+                            else:
+                                doc.meta = {"branch_id": branch_id}
+                        all_documents.extend(docs)
+
+        self.logger.info(
+            f"Retrieval completed: {len(all_documents)} documents from {len(branch_pipelines)} branches"
+        )
+
+        return {
+            "query": query,
+            "branches": branch_results,
+            "documents": all_documents,
+            "total_documents": len(all_documents),
+            "branches_count": len(branch_pipelines),
+        }
