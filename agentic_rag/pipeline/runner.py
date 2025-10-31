@@ -73,8 +73,7 @@ class PipelineRunner:
             raise ValueError("Username is required for auto-loading pipelines")
 
         if not pipeline_names:
-            # If no specific pipelines provided, try common pipeline names
-            pipeline_names = ["pdf_indexing_pipeline", "pdf_retrieval_pipeline"]
+            raise ValueError("No pipeline names provided for auto-loading")
 
         self.logger.info(f"Auto-loading pipelines: {pipeline_names}")
 
@@ -88,9 +87,18 @@ class PipelineRunner:
                 self.logger.debug(f"Building Haystack components: {pipeline_name}")
                 self.build_haystack_components_from_graph(pipeline_name)
 
+                # Detect pipeline type based on name
+                pipeline_type = (
+                    "retrieval" if "retrieval" in pipeline_name.lower() else "indexing"
+                )
+
                 # Create connected pipeline
-                self.logger.debug(f"Creating connected pipeline: {pipeline_name}")
-                self.create_haystack_pipeline(pipeline_name)
+                self.logger.debug(
+                    f"Creating connected {pipeline_type} pipeline: {pipeline_name}"
+                )
+                self.create_haystack_pipeline(
+                    pipeline_name, pipeline_type=pipeline_type
+                )
 
                 self.logger.info(f"Successfully loaded pipeline: {pipeline_name}")
 
@@ -101,18 +109,69 @@ class PipelineRunner:
 
     def load_pipeline_graph(self, pipeline_hashes: List[str], username: str) -> None:
         """
-        Load a pipeline from Neo4j using pipeline hashes and username.
+        Load pipeline metadata from Neo4j and store in _pipeline_graphs.
 
-        This method loads pipelines by their hash identifiers and associates them
-        with a specific user context.
+        Fetches all component metadata including configuration, connections,
+        and branch information for the specified pipelines.
 
         Args:
-            pipeline_hashes: List of pipeline hash identifiers
-            username: Username for pipeline context and permissions
+            pipeline_hashes: List of pipeline names to load (e.g., ['retrieval_pipeline'])
+            username: Username for pipeline ownership validation
 
         Raises:
             RuntimeError: If no graph store is configured
-            ValueError: If pipeline hashes not found or invalid username
+            ValueError: If pipeline not found or invalid username
+
+        Updates:
+            self._pipeline_graphs: Dict mapping pipeline names to component metadata
+
+        Example for Indexing Pipeline:
+            Input:
+                pipeline_hashes=['pipeline_small']
+
+            Output stored in _pipeline_graphs:
+                {
+                    'pipeline_small': [
+                        {
+                            'id': 'comp_123',
+                            'component_name': 'markdown_aware_chunker',
+                            'component_type': 'CHUNKER.MARKDOWN_AWARE',
+                            'component_config_json': '{"chunk_size": 500}',
+                            'pipeline_name': 'pipeline_small',
+                            'next_components': ['comp_456'],
+                            'cache_key': 'cache_abc123',
+                            'node_labels': ['Component']
+                        },
+                        # ... more components
+                    ]
+                }
+
+        Example for Retrieval Pipeline (with branches):
+            Input:
+                pipeline_hashes=['retrieval_pipeline']
+
+            Output stored in _pipeline_graphs:
+                {
+                    'retrieval_pipeline': [
+                        # Branch 1 components
+                        {
+                            'id': 'comp_789',
+                            'component_name': 'embedder',
+                            'branch_id': 'pipeline_small',  # ← Branch identifier
+                            'pipeline_name': 'retrieval_pipeline',
+                            'next_components': ['comp_890'],
+                            ...
+                        },
+                        # Branch 2 components
+                        {
+                            'id': 'comp_abc',
+                            'component_name': 'embedder',
+                            'branch_id': 'pipeline_medium',  # ← Different branch
+                            'pipeline_name': 'retrieval_pipeline',
+                            ...
+                        }
+                    ]
+                }
         """
         if not self.graph_store:
             raise RuntimeError(
@@ -135,7 +194,11 @@ class PipelineRunner:
 
     def build_haystack_components_from_graph(self, pipeline_name: str) -> None:
         """
-        Build runtime Haystack components from loaded pipeline graph data.
+        Instantiate Haystack component objects from metadata and store in _haystack_components_by_pipeline.
+
+        Takes component metadata from _pipeline_graphs, creates actual Python objects
+        (e.g., SentenceTransformersTextEmbedder, ChromaEmbeddingRetriever), and optionally
+        wraps them with GatedComponent for caching.
 
         Args:
             pipeline_name: Name of the pipeline to build components for
@@ -143,6 +206,43 @@ class PipelineRunner:
         Raises:
             RuntimeError: If no pipeline graph is loaded
             ValueError: If pipeline name not found in loaded data
+
+        Updates:
+            self._haystack_components_by_pipeline: Dict mapping pipeline names to component objects
+
+        Example Input (from _pipeline_graphs):
+            _pipeline_graphs = {
+                'retrieval_pipeline': [
+                    {
+                        'id': 'comp_789',
+                        'component_name': 'embedder',
+                        'component_config_json': '{"model": "all-MiniLM-L6-v2"}',
+                        'cache_key': 'cache_abc123',
+                        'branch_id': 'pipeline_small'
+                    },
+                    {
+                        'id': 'comp_890',
+                        'component_name': 'chroma_embedding_retriever',
+                        'component_config_json': '{"root_dir": "./data/...", "top_k": 5}',
+                        'cache_key': 'cache_def456',
+                        'branch_id': 'pipeline_small'
+                    }
+                ]
+            }
+
+        Example Output (stored in _haystack_components_by_pipeline):
+            _haystack_components_by_pipeline = {
+                'retrieval_pipeline': {
+                    'comp_789': <SentenceTransformersTextEmbedder(model='all-MiniLM-L6-v2')>,
+                    'comp_890': <ChromaEmbeddingRetriever(root_dir='./data/...', top_k=5)>
+                }
+            }
+
+        Note:
+            - All branch components are stored together (no separation by branch_id yet)
+            - Actual component objects are created, configured, and ready to use
+            - If enable_caching=True, components are wrapped with GatedComponent
+            - The branch_id stays in metadata, not in the component objects
         """
         if not self._pipeline_graphs:
             raise RuntimeError(
@@ -250,9 +350,34 @@ class PipelineRunner:
         # Store the components for this pipeline
         self._haystack_components_by_pipeline[pipeline_name] = haystack_components
 
-    def create_haystack_pipeline(self, pipeline_name: str) -> Any:
+    def create_haystack_pipeline(
+        self, pipeline_name: str, pipeline_type: str = "indexing"
+    ) -> Any:
         """
-        Create an actual Haystack Pipeline from components by connecting them sequentially.
+        Create Haystack Pipeline(s) by routing to appropriate builder.
+
+        Args:
+            pipeline_name: Name of the pipeline to create
+            pipeline_type: Type of pipeline - "indexing" or "retrieval" (default: "indexing")
+
+        Returns:
+            Connected Haystack Pipeline object(s) ready to run
+
+        Raises:
+            RuntimeError: If components haven't been built yet
+        """
+        if pipeline_type == "indexing":
+            return self.create_haystack_pipeline_indexing(pipeline_name)
+        elif pipeline_type == "retrieval":
+            return self.create_haystack_pipeline_retrieval(pipeline_name)
+        else:
+            raise ValueError(
+                f"Invalid pipeline_type: {pipeline_type}. Must be 'indexing' or 'retrieval'"
+            )
+
+    def create_haystack_pipeline_indexing(self, pipeline_name: str) -> Any:
+        """
+        Create an indexing Haystack Pipeline from components by connecting them sequentially.
 
         Args:
             pipeline_name: Name of the pipeline to create
@@ -281,10 +406,9 @@ class PipelineRunner:
         # Create Haystack pipeline
         pipeline = Pipeline()
 
-        self.logger.debug(f"Creating Haystack pipeline for: {pipeline_name}")
+        self.logger.debug(f"Creating indexing Haystack pipeline for: {pipeline_name}")
 
         # Add all components from the graph (filter out only DocumentStore nodes)
-        # Components may come from connected pipelines (e.g., retrievers accessing other pipeline's stores)
         component_nodes = [
             comp
             for comp in components_data
@@ -326,12 +450,175 @@ class PipelineRunner:
                                     f"Could not connect {current_name} -> {next_name}: {e}"
                                 )
 
-        self.logger.info(f"Pipeline '{pipeline_name}' created successfully")
+        self.logger.info(f"Indexing pipeline '{pipeline_name}' created successfully")
 
         # Store the connected pipeline
         self._haystack_pipelines[pipeline_name] = pipeline
 
         return pipeline
+
+    def create_haystack_pipeline_retrieval(self, pipeline_name: str) -> Dict[str, Any]:
+        """
+        Create multiple connected Haystack Pipelines from components, one per branch.
+
+        Groups components by branch_id, creates separate Pipeline objects for each branch,
+        and stores them in _haystack_pipelines with unique keys.
+
+        Args:
+            pipeline_name: Name of the retrieval pipeline to create
+
+        Returns:
+            Dictionary mapping branch_id to Haystack Pipeline objects
+
+        Raises:
+            RuntimeError: If components haven't been built yet or no branches found
+
+        Updates:
+            self._haystack_pipelines: Stores branch pipelines with keys like
+                                      "{pipeline_name}_{branch_id}"
+
+        Example Input (from _pipeline_graphs and _haystack_components_by_pipeline):
+            _pipeline_graphs['retrieval_pipeline'] = [
+                {'id': 'comp_1', 'branch_id': 'pipeline_small', 'next_components': ['comp_2']},
+                {'id': 'comp_2', 'branch_id': 'pipeline_small', 'next_components': []},
+                {'id': 'comp_3', 'branch_id': 'pipeline_medium', 'next_components': ['comp_4']},
+                {'id': 'comp_4', 'branch_id': 'pipeline_medium', 'next_components': []}
+            ]
+
+            _haystack_components_by_pipeline['retrieval_pipeline'] = {
+                'comp_1': <Embedder(model='all-MiniLM-L6-v2')>,
+                'comp_2': <Retriever(root_dir='./data/small')>,
+                'comp_3': <Embedder(model='paraphrase-MiniLM-L6-v2')>,
+                'comp_4': <Retriever(root_dir='./data/medium')>
+            }
+
+        Example Output (stored in _haystack_pipelines):
+            _haystack_pipelines = {
+                'retrieval_pipeline_pipeline_small': <Pipeline with comp_1 → comp_2>,
+                'retrieval_pipeline_pipeline_medium': <Pipeline with comp_3 → comp_4>
+            }
+
+        Process:
+            1. Group components by branch_id:
+               - pipeline_small: [comp_1, comp_2]
+               - pipeline_medium: [comp_3, comp_4]
+
+            2. For each branch:
+               - Create new Pipeline()
+               - Add components from that branch
+               - Connect components based on next_components
+               - Store with key "{pipeline_name}_{branch_id}"
+
+        Note:
+            - Each branch becomes an independent Haystack Pipeline
+            - Branches share the same pipeline_name but have different branch_ids
+            - Components within a branch are connected based on metadata
+        """
+        from collections import defaultdict
+
+        from haystack import Pipeline
+
+        if pipeline_name not in self._haystack_components_by_pipeline:
+            raise RuntimeError(
+                f"Components for pipeline '{pipeline_name}' not built yet. "
+                f"Call build_haystack_components_from_graph() first."
+            )
+
+        # Get the graph data to determine component order
+        if pipeline_name not in self._pipeline_graphs:
+            raise RuntimeError(f"Graph data for pipeline '{pipeline_name}' not found.")
+
+        components_data = self._pipeline_graphs[pipeline_name]
+        haystack_components = self._haystack_components_by_pipeline[pipeline_name]
+
+        # Group components by branch_id
+        component_nodes = [
+            comp
+            for comp in components_data
+            if "DocumentStore" not in comp.get("node_labels", [])
+        ]
+
+        branches: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for comp_data in component_nodes:
+            branch_id = comp_data.get("branch_id")
+            if branch_id:
+                branches[branch_id].append(comp_data)
+            else:
+                # Components without branch_id are shared across all branches
+                # We'll handle these separately if needed
+                pass
+
+        if not branches:
+            raise RuntimeError(
+                f"No branches found for retrieval pipeline '{pipeline_name}'. "
+                "Retrieval pipelines must have branch_id on components."
+            )
+
+        self.logger.info(
+            f"Creating {len(branches)} retrieval pipeline branch(es) for '{pipeline_name}'"
+        )
+
+        # Create separate pipeline for each branch
+        branch_pipelines: Dict[str, Any] = {}
+
+        for branch_id, branch_components in branches.items():
+            pipeline = Pipeline()
+            branch_key = f"{pipeline_name}_{branch_id}"
+
+            self.logger.debug(
+                f"Creating retrieval pipeline branch: {branch_key} "
+                f"({len(branch_components)} components)"
+            )
+
+            # Add components for this branch
+            for comp_data in branch_components:
+                comp_id = comp_data.get("id")
+                comp_name = comp_data.get("component_name")
+
+                if comp_id in haystack_components:
+                    pipeline.add_component(comp_id, haystack_components[comp_id])
+                    self.logger.debug(f"  Added component: {comp_name} (id: {comp_id})")
+
+            # Connect components within this branch
+            for comp_data in branch_components:
+                current_id = comp_data.get("id")
+                current_name = comp_data.get("component_name")
+                next_ids = comp_data.get("next_components", [])
+
+                if current_id in haystack_components:
+                    for next_id in next_ids:
+                        if next_id in haystack_components:
+                            next_data = next(
+                                (
+                                    c
+                                    for c in branch_components
+                                    if c.get("id") == next_id
+                                ),
+                                None,
+                            )
+                            if next_data:
+                                next_name = next_data.get("component_name")
+                                try:
+                                    pipeline.connect(current_id, next_id)
+                                    self.logger.debug(
+                                        f"  Connected: {current_name} -> {next_name}"
+                                    )
+                                except Exception as e:
+                                    self.logger.warning(
+                                        f"  Could not connect {current_name} -> {next_name}: {e}"
+                                    )
+
+            # Store this branch pipeline
+            branch_pipelines[branch_id] = pipeline
+            self._haystack_pipelines[branch_key] = pipeline
+
+            self.logger.info(f"✓ Created retrieval pipeline branch: {branch_key}")
+
+        self.logger.info(
+            f"All {len(branch_pipelines)} retrieval pipeline branches created for '{pipeline_name}'"
+        )
+
+        return branch_pipelines
 
     def run(self, pipeline_name: str, type: str, **kwargs: Any) -> Any:
         """
@@ -347,8 +634,6 @@ class PipelineRunner:
         """
         if type == "indexing" or type == PipelineUsage.INDEXING.value:
             return self._run_indexing_pipeline(pipeline_name, **kwargs)
-        elif type == "retrieval" or type == PipelineUsage.RETRIEVAL.value:
-            return self._run_retrieval_pipeline(pipeline_name, **kwargs)
         else:
             raise ValueError(
                 f"Unknown pipeline type: {type}. " "Must be 'indexing' or 'retrieval'"
@@ -455,17 +740,3 @@ class PipelineRunner:
                 )
 
             raise
-
-    def _run_retrieval_pipeline(self, pipeline_name: str, **kwargs: Any) -> Any:
-        """
-        Execute a retrieval pipeline.
-
-        Args:
-            pipeline_name: Name of the retrieval pipeline
-            **kwargs: Pipeline-specific arguments (e.g., query, top_k)
-
-        Returns:
-            Retrieval results
-        """
-        # TODO: Implement retrieval pipeline execution
-        pass
