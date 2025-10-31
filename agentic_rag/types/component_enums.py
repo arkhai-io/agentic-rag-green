@@ -40,6 +40,7 @@ class RETRIEVER(Enum):
 class GENERATOR(Enum):
     """Text generation components."""
 
+    PROMPT_BUILDER = "prompt_builder"
     OPENAI = "generator"
 
 
