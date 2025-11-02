@@ -1,394 +1,337 @@
-# Agentic RAG
+<div align="center">
+  <img src="assets/logo.jpg" alt="Arkhai" width="120"/>
+  <h1>Agentic RAG</h1>
+  <p>Multi-store retrieval pipeline with automatic component injection</p>
 
-A flexible, component-based RAG (Retrieval-Augmented Generation) pipeline system built on Haystack 2.0. Create powerful document processing and retrieval pipelines with minimal configuration.
+  [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+</div>
 
-## Architecture Overview
+---
+
+## Overview
+
+Agentic RAG is a component-based RAG system enabling **multi-store retrieval** across heterogeneous vector databases with different embedding models and chunking strategies. Built on Haystack 2.0, it automatically injects and orchestrates components from indexed pipelines into retrieval workflows.
+
+### Key Features
+
+- **Multi-Store Retrieval**: Query multiple vector stores with different embeddings simultaneously
+- **Auto-Injection**: Automatically derive embedders and retrievers from indexing pipeline metadata
+- **Branch Pipelines**: Independent execution paths per document store with result aggregation
+- **Config Inheritance**: Embedding models and storage paths inherited from indexing pipelines
+- **Graph-Based Storage**: Pipeline definitions and component relationships stored in Neo4j
+- **Type-Safe Components**: Strongly typed specifications with validation
+
+## Architecture
 
 ```mermaid
 graph TB
-    subgraph "Pipeline Runner"
-        PR[PipelineRunner]
-        PR --> IPL[Indexing Pipeline]
-        PR --> RPL[Retrieval Pipeline]
+    subgraph "Indexing Pipelines"
+        IP1[Pipeline Small<br/>chunk_size: 300<br/>model: all-MiniLM-L6-v2]
+        IP2[Pipeline Medium<br/>chunk_size: 600<br/>model: paraphrase-MiniLM-L6-v2]
+        IP3[Pipeline Large<br/>chunk_size: 1000<br/>model: all-mpnet-base-v2]
     end
 
-    subgraph "Pipeline Factory"
-        PF[PipelineFactory]
-        PF --> PB[PipelineBuilder]
-        PF --> CR[ComponentRegistry]
+    subgraph "Document Stores"
+        DS1[(ChromaDB<br/>Small)]
+        DS2[(ChromaDB<br/>Medium)]
+        DS3[(ChromaDB<br/>Large)]
     end
 
-    subgraph "Components"
-        CONV[Converters]
-        CHUNK[Chunkers]
-        EMBED[Embedders]
-        RETR[Retrievers]
-        GEN[Generators]
-        WRITE[Writers]
+    subgraph "Retrieval Pipeline"
+        RP[Multi-Branch<br/>Retrieval]
+        B1[Branch 1<br/>Embedder + Retriever]
+        B2[Branch 2<br/>Embedder + Retriever]
     end
 
-    subgraph "Data Stores"
-        CHROMA[(ChromaDB)]
-        FILES[📄 Documents]
+    subgraph "Aggregation"
+        AGG[Document Aggregator]
+        GEN[Generator]
     end
 
-    PR --> PF
-    PB --> CR
-    CR --> CONV
-    CR --> CHUNK
-    CR --> EMBED
-    CR --> RETR
-    CR --> GEN
-    CR --> WRITE
+    IP1 --> DS1
+    IP2 --> DS2
+    IP3 --> DS3
 
-    WRITE --> CHROMA
-    RETR --> CHROMA
-    CONV --> FILES
+    DS1 -.metadata.-> B1
+    DS2 -.metadata.-> B2
+
+    RP --> B1
+    RP --> B2
+
+    B1 --> AGG
+    B2 --> AGG
+    AGG --> GEN
+
+    style RP fill:#e3f2fd
+    style AGG fill:#f3e5f5
+    style GEN fill:#fff3e0
 ```
 
-## Features
+### Retrieval Flow
 
-- **Component-based Architecture**: Modular pipeline components for converters, chunkers, embedders, retrievers, and generators
-- **Custom Components**: Built-in markdown-aware and semantic chunkers optimized for structured documents
-- **Automatic Document Store Integration**: ChromaDB integration with local persistence and shared datastores
-- **Type-safe Configuration**: Strongly typed component specifications and configurations
-- **Factory Pattern**: Dynamic pipeline creation from simple specifications
-- **Runtime Parameter Support**: Override component parameters at execution time
-- **End-to-end Workflows**: Complete indexing, retrieval, and generation pipelines
+```mermaid
+sequenceDiagram
+    participant U as User Query
+    participant R as Retrieval Pipeline
+    participant B1 as Branch: pipeline_small
+    participant B2 as Branch: pipeline_medium
+    participant A as Aggregator
+    participant G as Generator
 
-## Quick Start
+    U->>R: "What is machine learning?"
+    R->>B1: Query with text embedding (all-MiniLM-L6-v2)
+    R->>B2: Query with text embedding (paraphrase-MiniLM-L6-v2)
 
-### Installation
+    B1->>B1: Retrieve top-k chunks (300 chars)
+    B2->>B2: Retrieve top-k chunks (600 chars)
+
+    B1->>A: Documents [branch_id: pipeline_small]
+    B2->>A: Documents [branch_id: pipeline_medium]
+
+    A->>G: Combined documents + query
+    G->>U: Generated response
+```
+
+## Installation
 
 ```bash
+# Clone repository
+git clone https://github.com/arkhai/agentic-rag.git
+cd agentic-rag
+
+# Install with Poetry
+poetry install
+
+# Or with pip
 pip install -e .
 ```
 
-## 📊 Pipeline Flow
+## Quick Start
 
-### Indexing Pipeline
-```mermaid
-flowchart LR
-    DOC[📄 Documents] --> CONV[Converter]
-    CONV --> CHUNK[Chunker]
-    CHUNK --> EMBED[Document Embedder]
-    EMBED --> WRITE[Document Writer]
-    WRITE --> DB[(ChromaDB)]
-
-    style DOC fill:#e1f5fe
-    style DB fill:#f3e5f5
-```
-
-### Retrieval Pipeline
-```mermaid
-flowchart LR
-    QUERY[Query] --> EMBED[Text Embedder]
-    EMBED --> RETR[Retriever]
-    RETR --> DB[(ChromaDB)]
-    DB --> RETR
-    RETR --> GEN[Generator]
-    GEN --> RESP[Response]
-
-    style QUERY fill:#e8f5e8
-    style RESP fill:#fff3e0
-    style DB fill:#f3e5f5
-```
-
-### Basic Usage
+### 1. Create Indexing Pipelines
 
 ```python
-from agentic_rag import PipelineRunner
+from agentic_rag.pipeline.factory import PipelineFactory
+from agentic_rag.components.neo4j_manager import GraphStore
 
-# Initialize the runner
-runner = PipelineRunner()
+# Initialize
+factory = PipelineFactory(graph_store=GraphStore())
 
-# Create an indexing pipeline
-indexing_spec = [
-    {"type": "CONVERTER.TEXT"},
-    {"type": "CHUNKER.MARKDOWN_AWARE"},
-    {"type": "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"},
-    {"type": "WRITER.DOCUMENT_WRITER"}
+# Define indexing pipelines with different chunking strategies
+indexing_specs = [
+    [
+        {"type": "CONVERTER.MARKITDOWN_PDF"},
+        {"type": "CHUNKER.MARKDOWN_AWARE"},
+        {"type": "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"},
+        {"type": "WRITER.CHROMA_DOCUMENT_WRITER"}
+    ]
 ]
 
-# Load the pipeline
-runner.load_pipeline(indexing_spec, "my_indexing_pipeline")
+indexing_configs = [
+    {
+        "_pipeline_name": "pipeline_small",
+        "markdown_aware_chunker": {"chunk_size": 300, "chunk_overlap": 30},
+        "document_embedder": {"model": "sentence-transformers/all-MiniLM-L6-v2"},
+        "chroma_document_writer": {"root_dir": "./data/user/pipeline_small"}
+    },
+    {
+        "_pipeline_name": "pipeline_medium",
+        "markdown_aware_chunker": {"chunk_size": 600, "chunk_overlap": 60},
+        "document_embedder": {"model": "sentence-transformers/paraphrase-MiniLM-L6-v2"},
+        "chroma_document_writer": {"root_dir": "./data/user/pipeline_medium"}
+    }
+]
+
+# Create pipelines
+pipelines = factory.build_pipeline_graphs_from_specs(
+    pipeline_specs=indexing_specs * 2,
+    configs=indexing_configs,
+    pipeline_types=["indexing", "indexing"],
+    username="user"
+)
+```
+
+### 2. Index Documents
+
+```python
+from agentic_rag.pipeline.runner import PipelineRunner
+
+# Initialize runner
+runner = PipelineRunner(
+    graph_store=graph_store,
+    username="user",
+    pipeline_names=["pipeline_small", "pipeline_medium"]
+)
 
 # Index documents
-from haystack import Document
-documents = [
-    Document(content="# AI Overview\n\nArtificial Intelligence is transforming industries...")
+for pipeline_name in ["pipeline_small", "pipeline_medium"]:
+    runner.run(
+        pipeline_name=pipeline_name,
+        type="indexing",
+        data_path="./documents/sample.pdf"
+    )
+```
+
+### 3. Create Multi-Store Retrieval Pipeline
+
+```python
+# Define retrieval pipeline connecting to multiple indexing pipelines
+retrieval_spec = [
+    [
+        {"type": "INDEX"},  # Auto-injects embedders and retrievers
+        {"type": "GENERATOR.PROMPT_BUILDER"},
+        {"type": "GENERATOR.OPENAI"}
+    ]
 ]
 
-results = runner.run("indexing", {"documents": documents})
-print(f"Indexed {results['processed_count']} documents")
+retrieval_config = [
+    {
+        "_pipeline_name": "retrieval_pipeline",
+        "_indexing_pipelines": ["pipeline_small", "pipeline_medium"],
+        "chroma_embedding_retriever": {"top_k": 3},
+        "prompt_builder": {"template": "Answer based on: {{documents}}"},
+        "generator": {"model": "gpt-4"}
+    }
+]
+
+# Create retrieval pipeline
+factory.build_pipeline_graphs_from_specs(
+    pipeline_specs=retrieval_spec,
+    configs=retrieval_config,
+    pipeline_types=["retrieval"],
+    username="user"
+)
+```
+
+### 4. Query Across Multiple Stores
+
+```python
+# Auto-load retrieval pipeline
+retrieval_runner = PipelineRunner(
+    graph_store=graph_store,
+    username="user",
+    pipeline_names=["retrieval_pipeline"]
+)
+
+# Execute multi-store retrieval
+result = retrieval_runner.run(
+    pipeline_name="retrieval_pipeline",
+    type="retrieval",
+    query="What is machine learning?"
+)
+
+# Results include documents from all branches
+print(f"Retrieved {result['total_documents']} documents")
+print(f"From {result['branches_count']} branches")
+
+for doc in result['documents']:
+    print(f"[{doc.meta['branch_id']}] {doc.content[:100]}...")
+```
+
+## Component Auto-Injection
+
+The system automatically injects components based on indexing pipeline metadata:
+
+| Indexing Component | Retrieval Equivalent | Inherited Config |
+|-------------------|---------------------|------------------|
+| `EMBEDDER.SENTENCE_TRANSFORMERS_DOC` | `EMBEDDER.SENTENCE_TRANSFORMERS` | `model` |
+| `WRITER.CHROMA_DOCUMENT_WRITER` | `RETRIEVER.CHROMA_EMBEDDING` | `root_dir` |
+
+Users can override inherited configurations:
+
+```python
+# Override top_k for retrieval
+"chroma_embedding_retriever": {"top_k": 5}  # Default: inherited from indexing
 ```
 
 ## Available Components
 
 ### Converters
-- **`CONVERTER.PDF`** - Standard PDF text extraction
-- **`CONVERTER.MARKER_PDF`** - Enhanced PDF extraction with Marker (better for academic papers)
-- **`CONVERTER.DOCX`** - Microsoft Word document processing
-- **`CONVERTER.HTML`** - HTML document processing
-- **`CONVERTER.TEXT`** - Plain text processing
+- `CONVERTER.MARKITDOWN_PDF` - PDF to markdown conversion
+- `CONVERTER.MARKER_PDF` - Enhanced PDF extraction (academic papers)
 
 ### Chunkers
-- **`CHUNKER.DOCUMENT_SPLITTER`** - Standard recursive text splitting
-- **`CHUNKER.MARKDOWN_AWARE`** - Preserves markdown structure and headers
-- **`CHUNKER.SEMANTIC`** - Semantic boundary-aware splitting (headers, lists, code blocks)
+- `CHUNKER.MARKDOWN_AWARE` - Preserves markdown structure
+- `CHUNKER.SEMANTIC` - Semantic boundary detection
 
 ### Embedders
-- **`EMBEDDER.SENTENCE_TRANSFORMERS`** - Text embedding for queries
-- **`EMBEDDER.SENTENCE_TRANSFORMERS_DOC`** - Document embedding for indexing
+- `EMBEDDER.SENTENCE_TRANSFORMERS` - Text embedding (retrieval)
+- `EMBEDDER.SENTENCE_TRANSFORMERS_DOC` - Document embedding (indexing)
 
 ### Retrievers
-- **`RETRIEVER.CHROMA_EMBEDDING`** - Vector similarity search with ChromaDB
+- `RETRIEVER.CHROMA_EMBEDDING` - Vector similarity search
 
 ### Generators
-- **`GENERATOR.OPENAI`** - OpenAI GPT-based text generation
+- `GENERATOR.PROMPT_BUILDER` - Jinja2 template-based prompts
+- `GENERATOR.OPENAI` - OpenAI GPT models
 
 ### Writers
-- **`WRITER.DOCUMENT_WRITER`** - Stores documents in ChromaDB with persistence
-
-## Retrieval Example
-
-```python
-# Create retrieval pipeline
-retrieval_spec = [
-    {"type": "EMBEDDER.SENTENCE_TRANSFORMERS"},
-    {"type": "RETRIEVER.CHROMA_EMBEDDING"}
-]
-
-runner.load_pipeline(retrieval_spec, "my_retrieval_pipeline")
-
-# Search documents with runtime parameters
-results = runner.run("retrieval", {
-    "query": "What is artificial intelligence?",
-    "top_k": 3,  # Return top 3 results
-    "filters": {"category": {"$eq": "ai"}}  # Filter by metadata
-})
-
-print(f"Found {len(results['results'])} relevant documents")
-```
+- `WRITER.CHROMA_DOCUMENT_WRITER` - ChromaDB persistence
 
 ## Configuration
 
+### Pipeline-Level Config
 ```python
-config = {
-    "markdown_aware_chunker": {
-        "chunk_size": 1000,
-        "chunk_overlap": 100
-    },
-    "document_embedder": {
-        "model": "sentence-transformers/all-MiniLM-L6-v2"
-    },
-    "document_writer": {
-        "root_dir": "./my_data"  # Custom ChromaDB location
-    }
+{
+    "_pipeline_name": "my_pipeline",
+    "_indexing_pipelines": ["pipeline_1", "pipeline_2"],  # For retrieval only
 }
-
-runner.load_pipeline(indexing_spec, "configured_pipeline", config)
 ```
 
-## End-to-End RAG Workflow
-
+### Component-Level Config
 ```python
-from agentic_rag import PipelineRunner
-from haystack import Document
-
-# Step 1: Index documents
-indexing_runner = PipelineRunner()
-indexing_spec = [
-    {"type": "CHUNKER.MARKDOWN_AWARE"},
-    {"type": "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"},
-    {"type": "WRITER.DOCUMENT_WRITER"}
-]
-
-config = {
-    "document_writer": {"root_dir": "./shared_db"},
-    "document_embedder": {"model": "sentence-transformers/all-MiniLM-L6-v2"}
+{
+    "component_name": {
+        "param1": "value1",
+        "param2": "value2"
+    }
 }
-
-indexing_runner.load_pipeline(indexing_spec, "indexing", config)
-
-# Index your documents
-documents = [
-    Document(content="# Machine Learning\n\nML is a subset of AI...", meta={"topic": "ai"}),
-    Document(content="# Python Programming\n\nPython is versatile...", meta={"topic": "programming"})
-]
-
-indexing_results = indexing_runner.run("indexing", {"documents": documents})
-print(f"Indexed {indexing_results['processed_count']} documents")
-
-# Step 2: Search and retrieve
-retrieval_runner = PipelineRunner()
-retrieval_spec = [
-    {"type": "EMBEDDER.SENTENCE_TRANSFORMERS"},
-    {"type": "RETRIEVER.CHROMA_EMBEDDING"}
-]
-
-retrieval_config = {
-    "chroma_embedding_retriever": {"root_dir": "./shared_db"},  # Same DB
-    "embedder": {"model": "sentence-transformers/all-MiniLM-L6-v2"}
-}
-
-retrieval_runner.load_pipeline(retrieval_spec, "retrieval", retrieval_config)
-
-# Query the indexed documents
-query_results = retrieval_runner.run("retrieval", {
-    "query": "machine learning algorithms",
-    "top_k": 5
-})
-
-print(f"🔍 Found {len(query_results['results'])} relevant documents")
 ```
 
-## 🗄️ Document Store Integration
-
-ChromaDB is automatically initialized with local persistence:
-- **Default path**: `./chroma/` (relative to current directory)
-- **Configurable**: Set `root_dir` in component config
-- **Shared storage**: Same `root_dir` = shared datastore across pipelines
-- **Automatic creation**: Directories created automatically if they don't exist
-
-## 🔧 Component Architecture
-
-```mermaid
-classDiagram
-    class PipelineRunner {
-        +load_pipeline(specs, name, config)
-        +run(pipeline_type, inputs)
-        -_run_indexing_pipeline()
-        -_run_retrieval_pipeline()
-    }
-
-    class PipelineFactory {
-        +create_pipeline_from_spec()
-        -_parse_component_spec()
-    }
-
-    class ComponentRegistry {
-        +register_component()
-        +get_component_spec()
-        +list_components()
-    }
-
-    class ComponentSpec {
-        +name: str
-        +component_type: ComponentType
-        +haystack_class: str
-        +input_types: List[DataType]
-        +output_types: List[DataType]
-    }
-
-    PipelineRunner --> PipelineFactory
-    PipelineFactory --> ComponentRegistry
-    ComponentRegistry --> ComponentSpec
-
-    class MarkdownAwareChunker {
-        +run(documents)
-        +chunk_size: int
-        +chunk_overlap: int
-    }
-
-    class SemanticChunker {
-        +run(documents)
-        +min_chunk_size: int
-        +max_chunk_size: int
-    }
-
-    ComponentSpec --> MarkdownAwareChunker
-    ComponentSpec --> SemanticChunker
-```
-
-## 🧪 Development
+## Development
 
 ```bash
 # Install dependencies
 poetry install
 
-# Run all tests
+# Run tests
 make test
 
-# Run specific test categories
-poetry run pytest tests/test_pipeline_runner_integration.py -v  # Integration tests
-poetry run pytest tests/components/ -v                          # Component tests
+# Run specific test
+poetry run pytest tests/test_multi_pipeline.py -v
 
 # Type checking
 make type-check
 
-# Linting and formatting
-make lint
+# Format code
 make format
 ```
 
-### Project Structure
+## Project Structure
 
 ```
 agentic_rag/
-├── components/           # Component implementations
-│   ├── chunkers/        # Custom chunking components
-│   ├── converters/      # Document conversion components
-│   └── registry.py      # Component registry
-├── pipeline/            # Pipeline orchestration
-│   ├── builder.py       # Pipeline construction
-│   ├── factory.py       # Pipeline creation from specs
-│   └── runner.py        # Pipeline execution
-└── types/               # Type definitions
-    ├── component_spec.py
-    ├── pipeline_spec.py
-    └── data_types.py
+├── components/
+│   ├── chunkers/          # Custom chunking implementations
+│   ├── converters/        # Document converters
+│   ├── gates/             # Component caching layer
+│   ├── neo4j_manager.py   # Graph database operations
+│   └── registry.py        # Component registry
+├── pipeline/
+│   ├── factory.py         # Pipeline creation and auto-injection
+│   ├── runner.py          # Pipeline execution and branching
+│   └── storage.py         # Neo4j pipeline storage
+└── types/
+    ├── component_enums.py # Component type definitions
+    ├── pipeline_spec.py   # Pipeline specifications
+    └── data_types.py      # Data type definitions
 ```
 
-### Adding Custom Components
+## License
 
-1. **Create your component** following Haystack 2.0 patterns:
-```python
-from haystack import component, Document
+MIT License - see [LICENSE](LICENSE) file for details.
 
-@component
-class MyCustomChunker:
-    def __init__(self, chunk_size: int = 1000):
-        self.chunk_size = chunk_size
+## Acknowledgments
 
-    @component.output_types(documents=List[Document])
-    def run(self, documents: List[Document]) -> Dict[str, List[Document]]:
-        # Your chunking logic here
-        return {"documents": chunked_docs}
-```
-
-2. **Register in ComponentRegistry**:
-```python
-self.register_component(
-    ComponentSpec(
-        name="my_custom_chunker",
-        component_type=ComponentType.CHUNKER,
-        haystack_class="your_module.MyCustomChunker",
-        input_types=[DataType.LIST_DOCUMENT],
-        output_types=[DataType.LIST_DOCUMENT],
-        default_config={"chunk_size": 1000}
-    )
-)
-```
-
-3. **Add to component enums** in `types/component_enums.py`
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Make your changes and add tests
-4. Run the test suite: `make test`
-5. Commit your changes: `git commit -m 'Add amazing feature'`
-6. Push to the branch: `git push origin feature/amazing-feature`
-7. Open a Pull Request
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) file for details
-
-## 🙏 Acknowledgments
-
-- Built on [Haystack 2.0](https://haystack.deepset.ai/) by deepset
-- Uses [ChromaDB](https://www.trychroma.com/) for vector storage
-- Integrates [SentenceTransformers](https://www.sbert.net/) for embeddings
+Built on [Haystack 2.0](https://haystack.deepset.ai/) by deepset, [ChromaDB](https://www.trychroma.com/), and [Neo4j](https://neo4j.com/).
