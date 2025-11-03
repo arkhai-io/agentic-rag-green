@@ -1,9 +1,40 @@
 """Test graph-based pipeline architecture (Factory + Runner + Neo4j)."""
 
+import os
+from unittest.mock import MagicMock
+
 import pytest
 
 from agentic_rag.components import GraphStore, get_default_registry
 from agentic_rag.pipeline import PipelineFactory, PipelineRunner
+
+
+def neo4j_available():
+    """Check if Neo4j credentials are available."""
+    return bool(
+        os.getenv("NEO4J_URI")
+        and os.getenv("NEO4J_USERNAME")
+        and os.getenv("NEO4J_PASSWORD")
+    )
+
+
+@pytest.fixture
+def mock_graph_store():
+    """Create a mock GraphStore for testing without Neo4j."""
+    mock = MagicMock(spec=GraphStore)
+    # Mock the driver and session
+    mock.driver = MagicMock()
+    mock.driver.verify_connectivity = MagicMock()
+    return mock
+
+
+@pytest.fixture
+def graph_store():
+    """Create a real or mock GraphStore based on availability."""
+    if neo4j_available():
+        return GraphStore()
+    else:
+        return mock_graph_store()
 
 
 class TestGraphPipelineArchitecture:
@@ -11,22 +42,19 @@ class TestGraphPipelineArchitecture:
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.graph_store = GraphStore()
-        self.factory = PipelineFactory(graph_store=self.graph_store)
-        self.runner = PipelineRunner(graph_store=self.graph_store)
         self.registry = get_default_registry()
 
-    def test_factory_builds_pipeline_graph(self):
+    def test_factory_builds_pipeline_graph(self, mock_graph_store):
         """Test that factory builds and stores pipeline graph in Neo4j."""
+        factory = PipelineFactory(graph_store=mock_graph_store)
+
         pipeline_spec = [
             {"type": "CONVERTER.PDF"},
             {"type": "CHUNKER.DOCUMENT_SPLITTER"},
         ]
 
         # Build pipeline graph (stores in Neo4j)
-        spec = self.factory.build_pipeline_graph(
-            pipeline_spec, "test_pipeline", config={}
-        )
+        spec = factory.build_pipeline_graph(pipeline_spec, "test_pipeline", config={})
 
         assert spec is not None
         assert spec.name == "test_pipeline"
@@ -34,52 +62,102 @@ class TestGraphPipelineArchitecture:
         assert spec.components[0].name == "pdf_converter"
         assert spec.components[1].name == "chunker"
 
-    def test_runner_loads_pipeline_graph(self):
+    def test_runner_loads_pipeline_graph(self, mock_graph_store):
         """Test that runner can load pipeline graph from Neo4j."""
+        factory = PipelineFactory(graph_store=mock_graph_store)
+        runner = PipelineRunner(graph_store=mock_graph_store)
+
         # First, create a pipeline
         pipeline_spec = [
             {"type": "CONVERTER.PDF"},
             {"type": "CHUNKER.DOCUMENT_SPLITTER"},
         ]
 
-        self.factory.build_pipeline_graph(
-            pipeline_spec, "load_test_pipeline", config={}
-        )
+        factory.build_pipeline_graph(pipeline_spec, "load_test_pipeline", config={})
+
+        # Mock the load response
+        mock_graph_store.validate_user_exists.return_value = True
+        mock_graph_store.get_pipeline_components_by_hash.return_value = [
+            {
+                "id": "comp_1",
+                "component_name": "pdf_converter",
+                "component_type": "CONVERTER.PDF",
+                "component_config_json": "{}",
+                "pipeline_name": "load_test_pipeline",
+                "next_components": ["comp_2"],
+                "node_labels": ["Component"],
+            },
+            {
+                "id": "comp_2",
+                "component_name": "chunker",
+                "component_type": "CHUNKER.DOCUMENT_SPLITTER",
+                "component_config_json": '{"split_by":"sentence","split_length":512}',
+                "pipeline_name": "load_test_pipeline",
+                "next_components": [],
+                "node_labels": ["Component"],
+            },
+        ]
 
         # Now load it with runner
-        self.runner.load_pipeline_graph(
+        runner.load_pipeline_graph(
             pipeline_hashes=["load_test_pipeline"], username="test_user"
         )
 
         # Verify graph data was loaded
-        assert self.runner._pipeline_graphs
-        assert "load_test_pipeline" in self.runner._pipeline_graphs
+        assert runner._pipeline_graphs
+        assert "load_test_pipeline" in runner._pipeline_graphs
 
-    def test_runner_builds_haystack_components(self):
+    def test_runner_builds_haystack_components(self, mock_graph_store):
         """Test that runner builds runtime Haystack components from graph."""
+        factory = PipelineFactory(graph_store=mock_graph_store)
+        runner = PipelineRunner(graph_store=mock_graph_store)
+
         # Create pipeline
         pipeline_spec = [
             {"type": "CONVERTER.PDF"},
             {"type": "CHUNKER.DOCUMENT_SPLITTER"},
         ]
 
-        self.factory.build_pipeline_graph(
+        factory.build_pipeline_graph(
             pipeline_spec, "component_test_pipeline", config={}
         )
 
+        # Mock the load response
+        mock_graph_store.validate_user_exists.return_value = True
+        mock_graph_store.get_pipeline_components_by_hash.return_value = [
+            {
+                "id": "comp_1",
+                "component_name": "pdf_converter",
+                "component_type": "CONVERTER.PDF",
+                "component_config_json": "{}",
+                "pipeline_name": "component_test_pipeline",
+                "cache_key": "cache_123",
+                "next_components": ["comp_2"],
+                "node_labels": ["Component"],
+            },
+            {
+                "id": "comp_2",
+                "component_name": "chunker",
+                "component_type": "CHUNKER.DOCUMENT_SPLITTER",
+                "component_config_json": '{"split_by":"sentence","split_length":512}',
+                "pipeline_name": "component_test_pipeline",
+                "cache_key": "cache_456",
+                "next_components": [],
+                "node_labels": ["Component"],
+            },
+        ]
+
         # Load from graph
-        self.runner.load_pipeline_graph(
+        runner.load_pipeline_graph(
             pipeline_hashes=["component_test_pipeline"], username="test_user"
         )
 
         # Build Haystack components (returns None, populates internal state)
-        self.runner.build_haystack_components_from_graph("component_test_pipeline")
+        runner.build_haystack_components_from_graph("component_test_pipeline")
 
         # Verify components were built
-        assert "component_test_pipeline" in self.runner._haystack_components_by_pipeline
-        components = self.runner._haystack_components_by_pipeline[
-            "component_test_pipeline"
-        ]
+        assert "component_test_pipeline" in runner._haystack_components_by_pipeline
+        components = runner._haystack_components_by_pipeline["component_test_pipeline"]
         assert components is not None
         assert len(components) >= 2  # At least the 2 components we added
 
@@ -92,8 +170,10 @@ class TestGraphPipelineArchitecture:
                 pipeline_hashes=["test"], username="test"
             )
 
-    def test_pipeline_with_config(self):
+    def test_pipeline_with_config(self, mock_graph_store):
         """Test pipeline creation with custom configuration."""
+        factory = PipelineFactory(graph_store=mock_graph_store)
+
         pipeline_spec = [
             {"type": "CHUNKER.DOCUMENT_SPLITTER"},
         ]
@@ -105,7 +185,7 @@ class TestGraphPipelineArchitecture:
             }
         }
 
-        spec = self.factory.build_pipeline_graph(
+        spec = factory.build_pipeline_graph(
             pipeline_spec, "config_test_pipeline", config=config
         )
 
@@ -120,16 +200,22 @@ class TestGraphPipelineArchitecture:
         assert spec.name == "pdf_converter"
         assert spec.component_type.value == "converter"
 
-    def test_invalid_pipeline_hash_handling(self):
+    def test_invalid_pipeline_hash_handling(self, mock_graph_store):
         """Test handling of invalid pipeline hashes."""
-        self.runner.load_pipeline_graph(
+        runner = PipelineRunner(graph_store=mock_graph_store)
+
+        # Mock empty response for nonexistent pipeline
+        mock_graph_store.validate_user_exists.return_value = True
+        mock_graph_store.get_pipeline_components_by_hash.return_value = []
+
+        runner.load_pipeline_graph(
             pipeline_hashes=["nonexistent_pipeline"], username="test_user"
         )
 
         # Should load empty/missing data for non-existent pipeline
         # Either not in dict or empty list
-        if "nonexistent_pipeline" in self.runner._pipeline_graphs:
-            assert len(self.runner._pipeline_graphs["nonexistent_pipeline"]) == 0
+        if "nonexistent_pipeline" in runner._pipeline_graphs:
+            assert len(runner._pipeline_graphs["nonexistent_pipeline"]) == 0
         # If not in dict, that's also fine - pipeline doesn't exist
 
 
