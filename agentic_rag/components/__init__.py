@@ -2,6 +2,7 @@
 
 # Custom components
 from .chunkers import MarkdownAwareChunker, SemanticChunker
+from .generators import OpenRouterGenerator
 from .neo4j_manager import GraphStore
 from .registry import ComponentRegistry, get_default_registry
 from .secrets import Secrets
@@ -11,6 +12,7 @@ __all__ = [
     "get_default_registry",
     "GraphStore",
     "MarkdownAwareChunker",
+    "OpenRouterGenerator",
     "Secrets",
     "SemanticChunker",
 ]

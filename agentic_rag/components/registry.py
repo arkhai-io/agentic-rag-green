@@ -263,6 +263,26 @@ class ComponentRegistry:
             )
         )
 
+        self.register_component(
+            ComponentSpec(
+                name="openrouter_generator",
+                component_type=ComponentType.GENERATOR,
+                haystack_class="agentic_rag.components.generators.OpenRouterGenerator",
+                input_types=[DataType.LIST_DOCUMENT, DataType.STRING],
+                output_types=[DataType.STRING],
+                pipeline_usage=PipelineUsage.RETRIEVAL,
+                dependencies=[],
+                default_config={
+                    "model": "openai/gpt-3.5-turbo",
+                    "generation_kwargs": {
+                        "temperature": 0.7,
+                        "max_tokens": 1000,
+                    },
+                },
+                parallelizable=False,
+            )
+        )
+
         # Writers - Document indexing components
         self.register_component(
             ComponentSpec(

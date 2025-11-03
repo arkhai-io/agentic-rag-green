@@ -48,6 +48,7 @@ class GENERATOR(Enum):
 
     PROMPT_BUILDER = "prompt_builder"
     OPENAI = "generator"
+    OPENROUTER = "openrouter_generator"
 
 
 class WRITER(Enum):
