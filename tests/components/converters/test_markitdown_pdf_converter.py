@@ -411,8 +411,6 @@ class TestMarkItDownPDFToDocument:
             from reportlab.lib.pagesizes import letter
             from reportlab.pdfgen import canvas
 
-            from agentic_rag.pipeline import PipelineRunner
-
             # Create a test PDF
             pdf_path = Path(self.temp_dir) / "pipeline_test.pdf"
             c = canvas.Canvas(str(pdf_path), pagesize=letter)
@@ -422,8 +420,10 @@ class TestMarkItDownPDFToDocument:
             c.drawString(100, 690, "Content for testing pipeline integration.")
             c.save()
 
-            # Create pipeline with MarkItDown converter
-            runner = PipelineRunner()
+            # Create pipeline with MarkItDown converter using factory
+            from agentic_rag import PipelineFactory
+
+            factory = PipelineFactory()
             pipeline_spec = [
                 {"type": "CONVERTER.MARKITDOWN_PDF"},
                 {"type": "CHUNKER.MARKDOWN_AWARE"},
@@ -434,7 +434,14 @@ class TestMarkItDownPDFToDocument:
                 "markdown_aware_chunker": {"chunk_size": 500, "chunk_overlap": 50},
             }
 
-            runner.load_pipeline(pipeline_spec, "markitdown_test", config)
+            # Build the pipeline graph (this validates the components work together)
+            spec = factory.build_pipeline_graph(
+                pipeline_spec, "markitdown_test", config
+            )
+
+            assert spec is not None
+            assert spec.name == "markitdown_test"
+            assert len(spec.components) == 2
 
             # Note: This is a simplified test - in real usage, you'd handle file loading differently
             # For now, just verify the pipeline can be created with MarkItDown converter
@@ -466,9 +473,7 @@ class TestMarkItDownPDFToDocument:
             # Create pipeline with MarkItDown converter
             pipeline_spec = [{"type": "CONVERTER.MARKITDOWN_PDF"}]
 
-            spec, pipeline = factory.create_pipeline_from_spec(
-                pipeline_spec, "markitdown_error_test"
-            )
+            spec = factory.build_pipeline_graph(pipeline_spec, "markitdown_error_test")
 
             assert spec.name == "markitdown_error_test"
             assert len(spec.components) == 1

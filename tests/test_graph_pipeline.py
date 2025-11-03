@@ -52,8 +52,8 @@ class TestGraphPipelineArchitecture:
         )
 
         # Verify graph data was loaded
-        assert self.runner._active_pipeline_graphs
-        assert "load_test_pipeline" in self.runner._active_pipeline_graphs
+        assert self.runner._pipeline_graphs
+        assert "load_test_pipeline" in self.runner._pipeline_graphs
 
     def test_runner_builds_haystack_components(self):
         """Test that runner builds runtime Haystack components from graph."""
@@ -72,18 +72,16 @@ class TestGraphPipelineArchitecture:
             pipeline_hashes=["component_test_pipeline"], username="test_user"
         )
 
-        # Build Haystack components
-        components = self.runner.build_haystack_components_from_graph(
-            "component_test_pipeline"
-        )
+        # Build Haystack components (returns None, populates internal state)
+        self.runner.build_haystack_components_from_graph("component_test_pipeline")
 
         # Verify components were built
+        assert "component_test_pipeline" in self.runner._haystack_components_by_pipeline
+        components = self.runner._haystack_components_by_pipeline[
+            "component_test_pipeline"
+        ]
         assert components is not None
         assert len(components) >= 2  # At least the 2 components we added
-
-        # Verify active pipeline is set
-        assert "component_test_pipeline" in self.runner._active_pipelines
-        assert len(self.runner._active_pipelines["component_test_pipeline"]) >= 2
 
     def test_runner_requires_graph_store(self):
         """Test that runner requires GraphStore to be configured."""
@@ -130,8 +128,8 @@ class TestGraphPipelineArchitecture:
 
         # Should load empty/missing data for non-existent pipeline
         # Either not in dict or empty list
-        if "nonexistent_pipeline" in self.runner._active_pipeline_graphs:
-            assert len(self.runner._active_pipeline_graphs["nonexistent_pipeline"]) == 0
+        if "nonexistent_pipeline" in self.runner._pipeline_graphs:
+            assert len(self.runner._pipeline_graphs["nonexistent_pipeline"]) == 0
         # If not in dict, that's also fine - pipeline doesn't exist
 
 
