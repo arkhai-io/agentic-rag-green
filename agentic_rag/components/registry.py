@@ -213,6 +213,26 @@ class ComponentRegistry:
             )
         )
 
+        # Rankers
+        self.register_component(
+            ComponentSpec(
+                name="sentence_transformers_similarity_ranker",
+                component_type=ComponentType.RERANKER,
+                haystack_class="haystack.components.rankers.SentenceTransformersSimilarityRanker",
+                input_types=[DataType.LIST_DOCUMENT, DataType.STRING],
+                output_types=[DataType.LIST_DOCUMENT],
+                pipeline_usage=PipelineUsage.RETRIEVAL,
+                dependencies=[],
+                default_config={
+                    "model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+                    "top_k": 10,
+                    "device": None,  # Can be "cpu" or "cuda"
+                    "backend": "torch",  # Can be "torch", "onnx", or "openvino"
+                },
+                parallelizable=False,
+            )
+        )
+
         # Prompt Builders
         self.register_component(
             ComponentSpec(

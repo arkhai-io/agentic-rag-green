@@ -17,13 +17,18 @@ class GraphStore:
         uri: Optional[str] = None,
         username: Optional[str] = None,
         password: Optional[str] = None,
+        database: Optional[str] = None,
     ) -> None:
         # Use provided values, then environment variables, then working defaults as fallback
         self.uri = uri or os.getenv("NEO4J_URI")
         self.username = username or os.getenv("NEO4J_USERNAME")
         self.password = password or os.getenv("NEO4J_PASSWORD")
+        # Allow configuration of database name, default to None (uses default database)
+        self.database = database or os.getenv("NEO4J_DATABASE")
 
         print(f"GraphStore connecting to: {self.uri} with user: {self.username}")
+        if self.database:
+            print(f"Using database: {self.database}")
 
         # Use the same SSL setup as the working example
         ssl_ctx = ssl.create_default_context(cafile=certifi.where())
@@ -50,7 +55,7 @@ class GraphStore:
     def add_nodes_batch(
         self, nodes: List[Dict[str, object]], label: str = "Node"
     ) -> None:
-        with self.driver.session(database="neo4j") as session:
+        with self.driver.session(database=self.database) as session:
             query = f"""
                 UNWIND $nodes AS node
                 MERGE (n:{label} {{id: node.id}})
@@ -65,7 +70,7 @@ class GraphStore:
         target_label: str = "Node",
     ) -> None:
         """Add edges in batch. Format: [(source_id, target_id, relationship_type)]"""
-        with self.driver.session(database="neo4j") as session:
+        with self.driver.session(database=self.database) as session:
             # Group edges by relationship type and create separate queries
             edges_by_type: Dict[str, List[Dict[str, str]]] = {}
             for source, target, rel_type in edges:
@@ -92,7 +97,7 @@ class GraphStore:
         if not component_ids:
             return []
 
-        with self.driver.session(database="neo4j") as session:
+        with self.driver.session(database=self.database) as session:
             query = """
                 UNWIND $ids AS id
                 MATCH (c:Component {id: id})
@@ -114,7 +119,7 @@ class GraphStore:
         Returns:
             List of component node dictionaries with all properties
         """
-        with self.driver.session(database="neo4j") as session:
+        with self.driver.session(database=self.database) as session:
             if username:
                 # Query with username filter for multi-tenant isolation
                 query = """
@@ -138,7 +143,7 @@ class GraphStore:
 
     def validate_user_exists(self, username: str) -> bool:
         """Check if a user exists in Neo4j."""
-        with self.driver.session(database="neo4j") as session:
+        with self.driver.session(database=self.database) as session:
             query = """
                 MATCH (u:User {username: $username})
                 RETURN u.id AS user_id
@@ -160,7 +165,7 @@ class GraphStore:
         Returns:
             List of component dictionaries with all necessary data
         """
-        with self.driver.session(database="neo4j") as session:
+        with self.driver.session(database=self.database) as session:
             # First find the starting component(s) owned by the user for this pipeline
             start_query = """
                 MATCH (u:User {username: $username})-[:OWNS]->(start:Component)
@@ -265,7 +270,7 @@ class GraphStore:
                   (output:DataPiece)
             RETURN fp, collect(output) AS outputs
         """
-        with self.driver.session(database="neo4j") as session:
+        with self.driver.session(database=self.database) as session:
             query = """
                 UNWIND $fingerprints AS fp
                 OPTIONAL MATCH (input:DataPiece {fingerprint: fp})
@@ -329,7 +334,7 @@ class GraphStore:
             username: User who owns this data
             processing_time_ms: Optional processing time
         """
-        with self.driver.session(database="neo4j") as session:
+        with self.driver.session(database=self.database) as session:
             query = """
                 // Create or get input DataPiece
                 MERGE (input:DataPiece {fingerprint: $input_fingerprint})

@@ -55,6 +55,11 @@ class Secrets:
         return Secrets.get("NEO4J_PASSWORD")
 
     @staticmethod
+    def neo4j_database() -> Optional[str]:
+        """Get Neo4j database name."""
+        return Secrets.get("NEO4J_DATABASE")
+
+    @staticmethod
     def openai_api_key() -> Optional[str]:
         """Get OpenAI API key."""
         return Secrets.get("OPENAI_API_KEY")

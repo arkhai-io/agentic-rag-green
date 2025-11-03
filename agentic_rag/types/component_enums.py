@@ -37,6 +37,12 @@ class RETRIEVER(Enum):
     CHROMA_EMBEDDING = "chroma_embedding_retriever"
 
 
+class RANKER(Enum):
+    """Document ranking/reranking components."""
+
+    SENTENCE_TRANSFORMERS_SIMILARITY = "sentence_transformers_similarity_ranker"
+
+
 class GENERATOR(Enum):
     """Text generation components."""
 
@@ -58,7 +64,7 @@ class DOCUMENT_STORE(Enum):
 
 # Union type for all component enums
 ComponentEnum = Union[
-    CONVERTER, CHUNKER, EMBEDDER, DOCUMENT_STORE, RETRIEVER, GENERATOR, WRITER
+    CONVERTER, CHUNKER, EMBEDDER, DOCUMENT_STORE, RETRIEVER, RANKER, GENERATOR, WRITER
 ]
 
 
@@ -69,6 +75,7 @@ COMPONENT_ENUM_MAP: Dict[str, Type[Enum]] = {
     "EMBEDDER": EMBEDDER,
     "DOCUMENT_STORE": DOCUMENT_STORE,
     "RETRIEVER": RETRIEVER,
+    "RANKER": RANKER,
     "GENERATOR": GENERATOR,
     "WRITER": WRITER,
 }
