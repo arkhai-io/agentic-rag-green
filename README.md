@@ -26,45 +26,52 @@ Agentic RAG is a component-based RAG system enabling **multi-store retrieval** a
 
 ```mermaid
 graph TB
-    subgraph "Indexing Pipelines"
-        IP1[Pipeline Small<br/>chunk_size: 300<br/>model: all-MiniLM-L6-v2]
-        IP2[Pipeline Medium<br/>chunk_size: 600<br/>model: paraphrase-MiniLM-L6-v2]
-        IP3[Pipeline Large<br/>chunk_size: 1000<br/>model: all-mpnet-base-v2]
+    subgraph "Indexing Phase"
+        IP1[Indexing Pipeline 1<br/>Custom Chunking<br/>Custom Embedder]
+        IP2[Indexing Pipeline 2<br/>Different Chunking<br/>Different Embedder]
+        IP3[Indexing Pipeline N<br/>Variant Strategy]
     end
 
-    subgraph "Document Stores"
-        DS1[(ChromaDB<br/>Small)]
-        DS2[(ChromaDB<br/>Medium)]
-        DS3[(ChromaDB<br/>Large)]
+    subgraph "Storage Layer"
+        DS1[(Vector Store 1)]
+        DS2[(Vector Store 2)]
+        DS3[(Vector Store N)]
     end
 
-    subgraph "Retrieval Pipeline"
-        RP[Multi-Branch<br/>Retrieval]
-        B1[Branch 1<br/>Embedder + Retriever]
-        B2[Branch 2<br/>Embedder + Retriever]
+    subgraph "Retrieval Phase"
+        RP[Query Router]
+        B1[Branch 1<br/>Auto-injected<br/>Embedder + Retriever]
+        B2[Branch 2<br/>Auto-injected<br/>Embedder + Retriever]
+        BN[Branch N<br/>Auto-injected<br/>Embedder + Retriever]
     end
 
-    subgraph "Aggregation"
-        AGG[Document Aggregator]
-        GEN[Generator]
+    subgraph "Response Generation"
+        AGG[Document Aggregator<br/>Merge & Deduplicate]
+        RANK[Optional Reranker]
+        GEN[LLM Generator]
     end
 
     IP1 --> DS1
     IP2 --> DS2
     IP3 --> DS3
 
-    DS1 -.metadata.-> B1
-    DS2 -.metadata.-> B2
+    DS1 -.config inheritance.-> B1
+    DS2 -.config inheritance.-> B2
+    DS3 -.config inheritance.-> BN
 
     RP --> B1
     RP --> B2
+    RP --> BN
 
     B1 --> AGG
     B2 --> AGG
-    AGG --> GEN
+    BN --> AGG
+    AGG --> RANK
+    RANK --> GEN
 
     style RP fill:#e3f2fd
     style AGG fill:#f3e5f5
+    style RANK fill:#e8f5e9
     style GEN fill:#fff3e0
 ```
 
@@ -72,25 +79,37 @@ graph TB
 
 ```mermaid
 sequenceDiagram
-    participant U as User Query
-    participant R as Retrieval Pipeline
-    participant B1 as Branch: pipeline_small
-    participant B2 as Branch: pipeline_medium
+    participant U as User
+    participant R as Router
+    participant B1 as Branch 1
+    participant B2 as Branch 2
+    participant BN as Branch N
     participant A as Aggregator
+    participant RK as Reranker
     participant G as Generator
 
-    U->>R: "What is machine learning?"
-    R->>B1: Query with text embedding (all-MiniLM-L6-v2)
-    R->>B2: Query with text embedding (paraphrase-MiniLM-L6-v2)
+    U->>R: User Query
 
-    B1->>B1: Retrieve top-k chunks (300 chars)
-    B2->>B2: Retrieve top-k chunks (600 chars)
+    par Parallel Retrieval
+        R->>B1: Embed with Model A
+        B1->>B1: Retrieve from Store 1
+        B1->>A: Documents + Metadata
+    and
+        R->>B2: Embed with Model B
+        B2->>B2: Retrieve from Store 2
+        B2->>A: Documents + Metadata
+    and
+        R->>BN: Embed with Model N
+        BN->>BN: Retrieve from Store N
+        BN->>A: Documents + Metadata
+    end
 
-    B1->>A: Documents [branch_id: pipeline_small]
-    B2->>A: Documents [branch_id: pipeline_medium]
-
-    A->>G: Combined documents + query
-    G->>U: Generated response
+    A->>A: Merge & Deduplicate
+    A->>RK: Combined Document Set
+    RK->>RK: Rerank by Relevance
+    RK->>G: Top-K Documents + Query
+    G->>G: Generate Response
+    G->>U: Final Answer
 ```
 
 ## Installation
