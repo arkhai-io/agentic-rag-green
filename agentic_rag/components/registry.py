@@ -300,6 +300,37 @@ class ComponentRegistry:
             )
         )
 
+        # Evaluators - Evaluation components (used in retrieval pipelines)
+        # Note: Focus on answer quality only, no document evaluation for now
+        # All evaluators package everything into a single eval_data dict
+        self.register_component(
+            ComponentSpec(
+                name="reference_free_evaluator",
+                component_type=ComponentType.EVALUATOR,
+                haystack_class="agentic_rag.components.evaluators.ReferenceFreeEvaluator",
+                input_types=[DataType.STRING, DataType.LIST_STRING],  # query, replies
+                output_types=[DataType.DICT],  # Single eval_data dict with everything
+                pipeline_usage=PipelineUsage.RETRIEVAL,
+                dependencies=[],
+                default_config={},
+                parallelizable=False,
+            )
+        )
+
+        self.register_component(
+            ComponentSpec(
+                name="gold_standard_evaluator",
+                component_type=ComponentType.EVALUATOR,
+                haystack_class="agentic_rag.components.evaluators.GoldStandardEvaluator",
+                input_types=[DataType.DICT],  # eval_data from previous evaluator
+                output_types=[DataType.DICT],  # Single eval_data dict with everything
+                pipeline_usage=PipelineUsage.RETRIEVAL,
+                dependencies=[],
+                default_config={},
+                parallelizable=False,
+            )
+        )
+
 
 # Global registry instance
 _default_registry: Optional[ComponentRegistry] = None

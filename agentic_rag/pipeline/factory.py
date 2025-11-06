@@ -77,9 +77,9 @@ class PipelineFactory:
         for i, (spec, config, pipeline_type) in enumerate(
             zip(pipeline_specs, configs, pipeline_types)
         ):
-            if len(spec) < 1 or len(spec) > 5:
+            if len(spec) < 1 or len(spec) > 10:
                 raise ValueError(
-                    f"Pipeline {i} must have 1-5 components, got {len(spec)}"
+                    f"Pipeline {i} must have 1-10 components, got {len(spec)}"
                 )
 
             # Use custom pipeline name from config if provided, otherwise default to pipeline_{i}

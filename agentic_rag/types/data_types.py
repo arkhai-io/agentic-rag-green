@@ -49,6 +49,9 @@ class ComponentType(Enum):
     # Generation
     GENERATOR = "generator"
 
+    # Evaluation
+    EVALUATOR = "evaluator"
+
 
 class PipelineUsage(Enum):
     """Usage types for pipeline components."""
