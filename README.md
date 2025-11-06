@@ -48,11 +48,25 @@ graph LR
         Gen --> Ans[Answer]
     end
 
+    subgraph "5a. Grounded Evaluation"
+        Ans --> G[Grounded Metrics]
+        G --> GM[BLEU<br/>ROUGE<br/>METEOR<br/>Answer Quality]
+    end
+
+    subgraph "5b. Ungrounded Evaluation"
+        Ans --> U[Ungrounded Metrics]
+        U --> UM[Coherence<br/>Readability<br/>Answer Structure<br/>Communication]
+    end
+
     style Q fill:#e3f2fd
     style R fill:#e3f2fd
     style Agg fill:#f3e5f5
     style Rank fill:#e8f5e9
     style Gen fill:#fff3e0
+    style G fill:#fce4ec
+    style GM fill:#fce4ec
+    style U fill:#e8eaf6
+    style UM fill:#e8eaf6
 ```
 
 ## How It Works
@@ -84,6 +98,65 @@ Aggregated → Reranked → Generated Answer
 ```
 
 Each branch gets the **exact same embedding model and storage path** used during indexing - automatically injected from Neo4j metadata.
+
+## Testing & Comparing Strategies
+
+This architecture enables systematic **comparison of different RAG strategies** using evaluation metrics:
+
+**1. Create multiple pipelines with different configurations:**
+```python
+# Test different chunk sizes
+Pipeline A: 300-token chunks + MiniLM
+Pipeline B: 600-token chunks + MPNet
+Pipeline C: 1000-token chunks + E5
+
+# Or test different embedding models
+Pipeline X: Semantic chunking + all-MiniLM-L6-v2
+Pipeline Y: Semantic chunking + all-mpnet-base-v2
+Pipeline Z: Semantic chunking + text-embedding-3-small
+```
+
+**2. Query all pipelines simultaneously:**
+```python
+retrieval_pipeline = {
+    "_indexing_pipelines": ["Pipeline A", "Pipeline B", "Pipeline C"]
+}
+```
+
+**3. Add evaluators to measure answer quality:**
+```python
+retrieval_spec = [
+    [
+        {"type": "INDEX"},
+        {"type": "GENERATOR.OPENROUTER"},
+        # Grounded metrics (require gold standard)
+        {"type": "EVALUATOR.BLEU"},           # Lexical overlap
+        {"type": "EVALUATOR.ANSWER_QUALITY"}, # LLM-as-judge
+        # Ungrounded metrics (no gold standard)
+        {"type": "EVALUATOR.COHERENCE"},      # Semantic consistency
+        {"type": "EVALUATOR.READABILITY"},    # Reading complexity
+    ]
+]
+```
+
+**4. Compare results across configurations:**
+```python
+# Run queries with different pipeline combinations
+result_small = runner.run(pipeline="retrieval", query="...",
+                         indexing_pipelines=["Pipeline A"])
+result_all = runner.run(pipeline="retrieval", query="...",
+                       indexing_pipelines=["Pipeline A", "Pipeline B", "Pipeline C"])
+
+# Compare metrics
+print(f"Small chunks only: BLEU={result_small['eval_data']['eval_metrics']['bleu_4']['score']}")
+print(f"All strategies:    BLEU={result_all['eval_data']['eval_metrics']['bleu_4']['score']}")
+```
+
+**Why This Matters:**
+- **No commitment**: Test strategies without rebuilding your entire system
+- **Rapid iteration**: Add/remove indexing pipelines independently
+- **Data-driven decisions**: Use metrics to choose optimal configurations
+- **Strategy mixing**: Let reranking select best chunks across all strategies
 
 ## Installation
 
@@ -194,7 +267,10 @@ print(f"Answer: {result['replies'][0]}")
 
 **Traditional approach**: Pick one strategy, hope it works
 
-**Agentic RAG**: Use them all, let reranking select the best results
+**Agentic RAG**:
+- Use them all simultaneously, let reranking select the best results
+- Test and compare strategies with built-in evaluation metrics
+- Make data-driven decisions about which configurations work best
 
 ## Evaluation
 
