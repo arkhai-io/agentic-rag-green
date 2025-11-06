@@ -5,6 +5,19 @@ import os
 import pytest
 
 
+@pytest.fixture(scope="session", autouse=True)
+def setup_nltk_data():
+    """Download required NLTK data for METEOR evaluator tests."""
+    try:
+        import nltk
+
+        # Download wordnet for METEOR evaluator
+        nltk.download("wordnet", quiet=True)
+        nltk.download("omw-1.4", quiet=True)  # Open Multilingual Wordnet
+    except Exception as e:
+        print(f"Warning: Could not download NLTK data: {e}")
+
+
 @pytest.fixture(autouse=True)
 def setup_test_env():
     """Set up test environment variables."""

@@ -27,5 +27,9 @@ jobs:
     - name: Run pre-commit hooks
       run: poetry run pre-commit run --all-files
 
+    - name: Download NLTK data
+      run: |
+        poetry run python -c "import nltk; nltk.download('wordnet'); nltk.download('omw-1.4')"
+
     - name: Run tests
       run: poetry run pytest tests/ -v
