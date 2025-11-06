@@ -1,7 +1,7 @@
 <div align="center">
   <img src="assets/logo.jpg" alt="Arkhai" width="120"/>
   <h1>Agentic RAG</h1>
-  <p>Multi-store retrieval pipeline with automatic component injection</p>
+  <p><strong>Multi-pipeline RAG with automatic component orchestration</strong></p>
 
   [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -9,135 +9,103 @@
 
 ---
 
-## Overview
+## What is Agentic RAG?
 
-Agentic RAG is a component-based RAG system enabling **multi-store retrieval** across heterogeneous vector databases with different embedding models and chunking strategies. Built on Haystack 2.0, it automatically injects and orchestrates components from indexed pipelines into retrieval workflows.
+A component-based RAG system that lets you query **multiple vector stores with different embeddings and chunking strategies** simultaneously. Built on Haystack 2.0 with Neo4j for pipeline orchestration.
 
-### Key Features
-
-- **Multi-Store Retrieval**: Query multiple vector stores with different embeddings simultaneously
-- **Auto-Injection**: Automatically derive embedders and retrievers from indexing pipeline metadata
-- **Branch Pipelines**: Independent execution paths per document store with result aggregation
-- **Config Inheritance**: Embedding models and storage paths inherited from indexing pipelines
-- **Graph-Based Storage**: Pipeline definitions and component relationships stored in Neo4j
-- **Type-Safe Components**: Strongly typed specifications with validation
+**Key Idea**: Create multiple indexing pipelines with different configurations (chunk sizes, embedding models), then automatically inject and orchestrate them at retrieval time.
 
 ## Architecture
 
 ```mermaid
-graph TB
-    subgraph "Indexing Phase"
-        IP1[Indexing Pipeline 1<br/>Custom Chunking<br/>Custom Embedder]
-        IP2[Indexing Pipeline 2<br/>Different Chunking<br/>Different Embedder]
-        IP3[Indexing Pipeline N<br/>Variant Strategy]
+graph LR
+    subgraph "1. Indexing"
+        Doc[Documents] --> P1[Pipeline A<br/>300 chunks<br/>MiniLM]
+        Doc --> P2[Pipeline B<br/>600 chunks<br/>MPNet]
+        Doc --> P3[Pipeline C<br/>1000 chunks<br/>E5]
     end
 
-    subgraph "Storage Layer"
-        DS1[(Vector Store 1)]
-        DS2[(Vector Store 2)]
-        DS3[(Vector Store N)]
+    subgraph "2. Storage"
+        P1 --> S1[(Store A)]
+        P2 --> S2[(Store B)]
+        P3 --> S3[(Store C)]
     end
 
-    subgraph "Retrieval Phase"
-        RP[Query Router]
-        B1[Branch 1<br/>Auto-injected<br/>Embedder + Retriever]
-        B2[Branch 2<br/>Auto-injected<br/>Embedder + Retriever]
-        BN[Branch N<br/>Auto-injected<br/>Embedder + Retriever]
+    subgraph "3. Retrieval"
+        Q[Query] --> R[Router]
+        R --> B1[Branch A<br/>Auto-injected]
+        R --> B2[Branch B<br/>Auto-injected]
+        R --> B3[Branch C<br/>Auto-injected]
+        S1 -.config.-> B1
+        S2 -.config.-> B2
+        S3 -.config.-> B3
     end
 
-    subgraph "Response Generation"
-        AGG[Document Aggregator<br/>Merge & Deduplicate]
-        RANK[Optional Reranker]
-        GEN[LLM Generator]
+    subgraph "4. Generation"
+        B1 & B2 & B3 --> Agg[Aggregate]
+        Agg --> Rank[Rerank]
+        Rank --> Gen[Generate]
+        Gen --> Ans[Answer]
     end
 
-    IP1 --> DS1
-    IP2 --> DS2
-    IP3 --> DS3
-
-    DS1 -.config inheritance.-> B1
-    DS2 -.config inheritance.-> B2
-    DS3 -.config inheritance.-> BN
-
-    RP --> B1
-    RP --> B2
-    RP --> BN
-
-    B1 --> AGG
-    B2 --> AGG
-    BN --> AGG
-    AGG --> RANK
-    RANK --> GEN
-
-    style RP fill:#e3f2fd
-    style AGG fill:#f3e5f5
-    style RANK fill:#e8f5e9
-    style GEN fill:#fff3e0
+    style Q fill:#e3f2fd
+    style R fill:#e3f2fd
+    style Agg fill:#f3e5f5
+    style Rank fill:#e8f5e9
+    style Gen fill:#fff3e0
 ```
 
-### Retrieval Flow
+## How It Works
 
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant R as Router
-    participant B1 as Branch 1
-    participant B2 as Branch 2
-    participant BN as Branch N
-    participant A as Aggregator
-    participant RK as Reranker
-    participant G as Generator
-
-    U->>R: User Query
-
-    par Parallel Retrieval
-        R->>B1: Embed with Model A
-        B1->>B1: Retrieve from Store 1
-        B1->>A: Documents + Metadata
-    and
-        R->>B2: Embed with Model B
-        B2->>B2: Retrieve from Store 2
-        B2->>A: Documents + Metadata
-    and
-        R->>BN: Embed with Model N
-        BN->>BN: Retrieve from Store N
-        BN->>A: Documents + Metadata
-    end
-
-    A->>A: Merge & Deduplicate
-    A->>RK: Combined Document Set
-    RK->>RK: Rerank by Relevance
-    RK->>G: Top-K Documents + Query
-    G->>G: Generate Response
-    G->>U: Final Answer
+**1. Create diverse indexing pipelines** with different strategies:
+```python
+Pipeline A: Small chunks (300) + MiniLM embeddings → Store A
+Pipeline B: Medium chunks (600) + MPNet embeddings → Store B
+Pipeline C: Large chunks (1000) + E5 embeddings → Store C
 ```
+
+**2. System stores configuration in Neo4j**:
+- Component types, parameters, connections
+- Embedding models, storage paths, chunk sizes
+
+**3. At retrieval, specify which pipelines to query**:
+```python
+retrieval_pipeline = {
+    "_indexing_pipelines": ["Pipeline A", "Pipeline B"]  # Query 2 of 3
+}
+```
+
+**4. System automatically creates parallel branches**:
+```python
+Branch A: Query Embedder (MiniLM) → Retriever (Store A) → Docs
+Branch B: Query Embedder (MPNet) → Retriever (Store B) → Docs
+↓
+Aggregated → Reranked → Generated Answer
+```
+
+Each branch gets the **exact same embedding model and storage path** used during indexing - automatically injected from Neo4j metadata.
 
 ## Installation
 
 ```bash
-# Clone repository
 git clone https://github.com/arkhai/agentic-rag.git
 cd agentic-rag
-
-# Install with Poetry
 poetry install
-
-# Or with pip
-pip install -e .
 ```
+
+**Requirements**: Python 3.10+, Neo4j
 
 ## Quick Start
 
-### 1. Create Indexing Pipelines
+### 1. Index documents with multiple strategies
 
 ```python
-from agentic_rag.pipeline.factory import PipelineFactory
-from agentic_rag.components.neo4j_manager import GraphStore
+from agentic_rag.pipeline import PipelineFactory, PipelineRunner
+from agentic_rag.components import GraphStore
 
-# Initialize
 factory = PipelineFactory(graph_store=GraphStore())
 
-# Define indexing pipelines with different chunking strategies
+# Create 2 indexing pipelines with different chunk sizes
 indexing_specs = [
     [
         {"type": "CONVERTER.MARKITDOWN_PDF"},
@@ -147,171 +115,132 @@ indexing_specs = [
     ]
 ]
 
-indexing_configs = [
+configs = [
     {
-        "_pipeline_name": "pipeline_small",
-        "markdown_aware_chunker": {"chunk_size": 300, "chunk_overlap": 30},
-        "document_embedder": {"model": "sentence-transformers/all-MiniLM-L6-v2"},
-        "chroma_document_writer": {"root_dir": "./data/user/pipeline_small"}
+        "_pipeline_name": "small_chunks",
+        "markdown_aware_chunker": {"chunk_size": 300},
+        "document_embedder": {"model": "all-MiniLM-L6-v2"},
+        "chroma_document_writer": {"root_dir": "./data/small"}
     },
     {
-        "_pipeline_name": "pipeline_medium",
-        "markdown_aware_chunker": {"chunk_size": 600, "chunk_overlap": 60},
-        "document_embedder": {"model": "sentence-transformers/paraphrase-MiniLM-L6-v2"},
-        "chroma_document_writer": {"root_dir": "./data/user/pipeline_medium"}
+        "_pipeline_name": "large_chunks",
+        "markdown_aware_chunker": {"chunk_size": 1000},
+        "document_embedder": {"model": "all-mpnet-base-v2"},
+        "chroma_document_writer": {"root_dir": "./data/large"}
     }
 ]
 
-# Create pipelines
-pipelines = factory.build_pipeline_graphs_from_specs(
+# Build and store in Neo4j
+factory.build_pipeline_graphs_from_specs(
     pipeline_specs=indexing_specs * 2,
-    configs=indexing_configs,
+    configs=configs,
     pipeline_types=["indexing", "indexing"],
-    username="user"
-)
-```
-
-### 2. Index Documents
-
-```python
-from agentic_rag.pipeline.runner import PipelineRunner
-
-# Initialize runner
-runner = PipelineRunner(
-    graph_store=graph_store,
-    username="user",
-    pipeline_names=["pipeline_small", "pipeline_medium"]
+    username="myuser"
 )
 
 # Index documents
-for pipeline_name in ["pipeline_small", "pipeline_medium"]:
-    runner.run(
-        pipeline_name=pipeline_name,
-        type="indexing",
-        data_path="./documents/sample.pdf"
-    )
+runner = PipelineRunner(graph_store=factory.graph_store, username="myuser")
+runner.run(pipeline_name="small_chunks", type="indexing", data_path="./docs/paper.pdf")
+runner.run(pipeline_name="large_chunks", type="indexing", data_path="./docs/paper.pdf")
 ```
 
-### 3. Create Multi-Store Retrieval Pipeline
+### 2. Query multiple pipelines simultaneously
 
 ```python
-# Define retrieval pipeline connecting to multiple indexing pipelines
+# Create retrieval pipeline that queries both stores
 retrieval_spec = [
     [
-        {"type": "INDEX"},  # Auto-injects embedders and retrievers
+        {"type": "INDEX"},  # Auto-injects embedders/retrievers from indexing pipelines
+        {"type": "RANKER.SENTENCE_TRANSFORMERS_SIMILARITY"},
         {"type": "GENERATOR.PROMPT_BUILDER"},
-        {"type": "GENERATOR.OPENAI"}
+        {"type": "GENERATOR.OPENROUTER"}
     ]
 ]
 
 retrieval_config = [
     {
-        "_pipeline_name": "retrieval_pipeline",
-        "_indexing_pipelines": ["pipeline_small", "pipeline_medium"],
-        "chroma_embedding_retriever": {"top_k": 3},
-        "prompt_builder": {"template": "Answer based on: {{documents}}"},
-        "generator": {"model": "gpt-4"}
+        "_pipeline_name": "multi_retrieval",
+        "_indexing_pipelines": ["small_chunks", "large_chunks"],  # Query both!
+        "chroma_embedding_retriever": {"top_k": 5},
+        "sentence_transformers_similarity_ranker": {"top_k": 3},
+        "openrouter_generator": {"model": "anthropic/claude-3.5-sonnet"}
     }
 ]
 
-# Create retrieval pipeline
 factory.build_pipeline_graphs_from_specs(
     pipeline_specs=retrieval_spec,
     configs=retrieval_config,
     pipeline_types=["retrieval"],
-    username="user"
-)
-```
-
-### 4. Query Across Multiple Stores
-
-```python
-# Auto-load retrieval pipeline
-retrieval_runner = PipelineRunner(
-    graph_store=graph_store,
-    username="user",
-    pipeline_names=["retrieval_pipeline"]
+    username="myuser"
 )
 
-# Execute multi-store retrieval
-result = retrieval_runner.run(
-    pipeline_name="retrieval_pipeline",
+# Query retrieves from both stores, reranks, generates answer
+runner = PipelineRunner(graph_store=factory.graph_store, username="myuser")
+result = runner.run(
+    pipeline_name="multi_retrieval",
     type="retrieval",
-    query="What is machine learning?"
+    query="What are the main findings?"
 )
 
-# Results include documents from all branches
-print(f"Retrieved {result['total_documents']} documents")
-print(f"From {result['branches_count']} branches")
-
-for doc in result['documents']:
-    print(f"[{doc.meta['branch_id']}] {doc.content[:100]}...")
+print(f"Retrieved {result['total_documents']} documents from {result['branches_count']} branches")
+print(f"Answer: {result['replies'][0]}")
 ```
 
-## Component Auto-Injection
+## Why This Matters
 
-The system automatically injects components based on indexing pipeline metadata:
+**Problem**: Different chunking strategies and embedding models excel at different tasks:
+- Small chunks + lightweight embeddings: Fast, good for facts
+- Large chunks + powerful embeddings: Better for context, reasoning
 
-| Indexing Component | Retrieval Equivalent | Inherited Config |
-|-------------------|---------------------|------------------|
-| `EMBEDDER.SENTENCE_TRANSFORMERS_DOC` | `EMBEDDER.SENTENCE_TRANSFORMERS` | `model` |
-| `WRITER.CHROMA_DOCUMENT_WRITER` | `RETRIEVER.CHROMA_EMBEDDING` | `root_dir` |
+**Traditional approach**: Pick one strategy, hope it works
 
-Users can override inherited configurations:
+**Agentic RAG**: Use them all, let reranking select the best results
+
+## Evaluation
+
+Built-in evaluation metrics for answer quality:
 
 ```python
-# Override top_k for retrieval
-"chroma_embedding_retriever": {"top_k": 5}  # Default: inherited from indexing
+# Add evaluators to your retrieval pipeline
+retrieval_spec = [
+    [
+        {"type": "INDEX"},
+        {"type": "GENERATOR.OPENROUTER"},
+        {"type": "EVALUATOR.BLEU"},           # Lexical overlap
+        {"type": "EVALUATOR.ANSWER_QUALITY"}, # LLM-as-judge
+        {"type": "EVALUATOR.COHERENCE"},      # Semantic consistency
+    ]
+]
+
+result = runner.run(
+    pipeline_name="multi_retrieval",
+    type="retrieval",
+    query="What is machine learning?",
+    ground_truth_answer="ML is a subset of AI..."  # Optional for grounded metrics
+)
+
+print(result['eval_data']['eval_metrics'])
+# {
+#   "bleu_4": {"score": 0.65},
+#   "answer_quality_overall": {"score": 0.85},
+#   "coherence": {"score": 0.78}
+# }
 ```
 
-## Available Components
+**Grounded metrics** (require gold standard):
+- BLEU, ROUGE, METEOR - Lexical overlap
+- Answer Quality, Fact Matching - LLM-based evaluation
 
-### Converters
-- `CONVERTER.MARKITDOWN_PDF` - PDF to markdown conversion
-- `CONVERTER.MARKER_PDF` - Enhanced PDF extraction (academic papers)
-
-### Chunkers
-- `CHUNKER.MARKDOWN_AWARE` - Preserves markdown structure
-- `CHUNKER.SEMANTIC` - Semantic boundary detection
-
-### Embedders
-- `EMBEDDER.SENTENCE_TRANSFORMERS` - Text embedding (retrieval)
-- `EMBEDDER.SENTENCE_TRANSFORMERS_DOC` - Document embedding (indexing)
-
-### Retrievers
-- `RETRIEVER.CHROMA_EMBEDDING` - Vector similarity search
-
-### Generators
-- `GENERATOR.PROMPT_BUILDER` - Jinja2 template-based prompts
-- `GENERATOR.OPENAI` - OpenAI GPT models
-
-### Writers
-- `WRITER.CHROMA_DOCUMENT_WRITER` - ChromaDB persistence
-
-## Configuration
-
-### Pipeline-Level Config
-```python
-{
-    "_pipeline_name": "my_pipeline",
-    "_indexing_pipelines": ["pipeline_1", "pipeline_2"],  # For retrieval only
-}
-```
-
-### Component-Level Config
-```python
-{
-    "component_name": {
-        "param1": "value1",
-        "param2": "value2"
-    }
-}
-```
+**Ungrounded metrics** (no gold standard):
+- Coherence - Semantic consistency
+- Readability - Reading level, complexity
+- Answer Structure - Organization, formatting
+- Communication Quality - Tone, professionalism
 
 ## Development
 
 ```bash
-# Install dependencies
+# Install dev dependencies
 poetry install
 
 # Run tests
@@ -327,30 +256,22 @@ make type-check
 make format
 ```
 
-## Project Structure
+## Components
 
-```
-agentic_rag/
-├── components/
-│   ├── chunkers/          # Custom chunking implementations
-│   ├── converters/        # Document converters
-│   ├── gates/             # Component caching layer
-│   ├── neo4j_manager.py   # Graph database operations
-│   └── registry.py        # Component registry
-├── pipeline/
-│   ├── factory.py         # Pipeline creation and auto-injection
-│   ├── runner.py          # Pipeline execution and branching
-│   └── storage.py         # Neo4j pipeline storage
-└── types/
-    ├── component_enums.py # Component type definitions
-    ├── pipeline_spec.py   # Pipeline specifications
-    └── data_types.py      # Data type definitions
-```
+**Converters**: PDF → Markdown (MarkItDown, Marker)
+**Chunkers**: Markdown-aware, Semantic boundary detection
+**Embedders**: Sentence Transformers (document/query modes)
+**Writers/Retrievers**: ChromaDB
+**Generators**: OpenAI, OpenRouter (Claude, etc.)
+**Rankers**: Cross-encoder reranking
+**Evaluators**: BLEU, ROUGE, METEOR, Answer Quality, Coherence, Readability
+
+See [`agentic_rag/types/component_enums.py`](agentic_rag/types/component_enums.py) for full component list.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT License
 
-## Acknowledgments
+## Built With
 
-Built on [Haystack 2.0](https://haystack.deepset.ai/) by deepset, [ChromaDB](https://www.trychroma.com/), and [Neo4j](https://neo4j.com/).
+[Haystack 2.0](https://haystack.deepset.ai/) · [ChromaDB](https://www.trychroma.com/) · [Neo4j](https://neo4j.com/)
