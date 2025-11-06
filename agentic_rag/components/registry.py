@@ -317,16 +317,117 @@ class ComponentRegistry:
             )
         )
 
+        # Grounded Evaluation Metrics - Lexical Overlap
         self.register_component(
             ComponentSpec(
-                name="gold_standard_evaluator",
+                name="bleu_evaluator",
                 component_type=ComponentType.EVALUATOR,
-                haystack_class="agentic_rag.components.evaluators.GoldStandardEvaluator",
-                input_types=[DataType.DICT],  # eval_data from previous evaluator
-                output_types=[DataType.DICT],  # Single eval_data dict with everything
+                haystack_class="agentic_rag.components.evaluators.BLEUEvaluator",
+                input_types=[DataType.STRING, DataType.LIST_STRING],  # query, replies
+                output_types=[DataType.DICT],  # Single eval_data dict
                 pipeline_usage=PipelineUsage.RETRIEVAL,
                 dependencies=[],
-                default_config={},
+                default_config={"max_n": 4, "smoothing": True},
+                parallelizable=False,
+            )
+        )
+
+        self.register_component(
+            ComponentSpec(
+                name="rouge_evaluator",
+                component_type=ComponentType.EVALUATOR,
+                haystack_class="agentic_rag.components.evaluators.ROUGEEvaluator",
+                input_types=[DataType.STRING, DataType.LIST_STRING],  # query, replies
+                output_types=[DataType.DICT],  # Single eval_data dict
+                pipeline_usage=PipelineUsage.RETRIEVAL,
+                dependencies=[],
+                default_config={"rouge_type": "rougeL", "use_stemmer": True},
+                parallelizable=False,
+            )
+        )
+
+        self.register_component(
+            ComponentSpec(
+                name="meteor_evaluator",
+                component_type=ComponentType.EVALUATOR,
+                haystack_class="agentic_rag.components.evaluators.METEOREvaluator",
+                input_types=[DataType.STRING, DataType.LIST_STRING],  # query, replies
+                output_types=[DataType.DICT],  # Single eval_data dict
+                pipeline_usage=PipelineUsage.RETRIEVAL,
+                dependencies=[],
+                default_config={"alpha": 0.9, "beta": 3.0, "gamma": 0.5},
+                parallelizable=False,
+            )
+        )
+
+        # Grounded Evaluation Metrics - LLM-as-Judge
+        self.register_component(
+            ComponentSpec(
+                name="answer_quality_evaluator",
+                component_type=ComponentType.EVALUATOR,
+                haystack_class="agentic_rag.components.evaluators.AnswerQualityEvaluator",
+                input_types=[DataType.STRING, DataType.LIST_STRING],  # query, replies
+                output_types=[DataType.DICT],  # Single eval_data dict
+                pipeline_usage=PipelineUsage.RETRIEVAL,
+                dependencies=[],
+                default_config={
+                    "model": "anthropic/claude-3.5-sonnet",
+                    "base_url": "https://openrouter.ai/api/v1",
+                },
+                parallelizable=False,
+            )
+        )
+
+        self.register_component(
+            ComponentSpec(
+                name="fact_matching_evaluator",
+                component_type=ComponentType.EVALUATOR,
+                haystack_class="agentic_rag.components.evaluators.FactMatchingEvaluator",
+                input_types=[DataType.STRING, DataType.LIST_STRING],  # query, replies
+                output_types=[DataType.DICT],  # Single eval_data dict
+                pipeline_usage=PipelineUsage.RETRIEVAL,
+                dependencies=[],
+                default_config={
+                    "llm_model": "anthropic/claude-3.5-sonnet",
+                    "embedding_model": "all-MiniLM-L6-v2",
+                    "base_url": "https://openrouter.ai/api/v1",
+                    "similarity_threshold": 0.75,
+                    "matching_strategy": "greedy",
+                },
+                parallelizable=False,
+            )
+        )
+
+        self.register_component(
+            ComponentSpec(
+                name="longqa_answer_evaluator",
+                component_type=ComponentType.EVALUATOR,
+                haystack_class="agentic_rag.components.evaluators.LongQAAnswerEvaluator",
+                input_types=[DataType.STRING, DataType.LIST_STRING],  # query, replies
+                output_types=[DataType.DICT],  # Single eval_data dict
+                pipeline_usage=PipelineUsage.RETRIEVAL,
+                dependencies=[],
+                default_config={
+                    "model": "anthropic/claude-3.5-sonnet",
+                    "base_url": "https://openrouter.ai/api/v1",
+                },
+                parallelizable=False,
+            )
+        )
+
+        self.register_component(
+            ComponentSpec(
+                name="morqa_faithfulness_evaluator",
+                component_type=ComponentType.EVALUATOR,
+                haystack_class="agentic_rag.components.evaluators.MORQAFaithfulnessEvaluator",
+                input_types=[DataType.STRING, DataType.LIST_STRING],  # query, replies
+                output_types=[DataType.DICT],  # Single eval_data dict
+                pipeline_usage=PipelineUsage.RETRIEVAL,
+                dependencies=[],
+                default_config={
+                    "model": "anthropic/claude-3.5-sonnet",
+                    "base_url": "https://openrouter.ai/api/v1",
+                },
                 parallelizable=False,
             )
         )

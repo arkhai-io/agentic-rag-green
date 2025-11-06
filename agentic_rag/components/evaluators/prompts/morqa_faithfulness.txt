@@ -1,0 +1,28 @@
+You are a clinician-evaluator. Compare the model answer to the gold/reference answer and check how its factual statements align with the reference. Do NOT quote the reference verbatim. Output ONLY JSON.
+
+[QUESTION]
+{question}
+
+[MODEL_ANSWER]
+{answer}
+
+[REFERENCE_ANSWER]
+{gold_answer}
+
+[STEPS]
+1) Extract up to 10 atomic clinical facts from the MODEL_ANSWER.
+2) For each fact, label:
+   "supported_by_reference" | "partially_supported" | "contradicted" | "not_in_reference".
+3) Identify any critical errors (e.g., wrong diagnosis, wrong drug/dose, missed red-flag).
+4) Compute atomic_faithfulness = (#supported + 0.5*#partially_supported) / max(1,#facts).
+
+[OUTPUT JSON]
+{{
+  "facts": [
+    {{"text":"...", "label":"supported_by_reference"}},
+    ...
+  ],
+  "critical_errors": [ "wrong_diagnosis", ... ],
+  "atomic_faithfulness": 0.0,
+  "summary": "1–2 sentences explaining main issue(s)"
+}}

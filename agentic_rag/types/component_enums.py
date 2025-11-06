@@ -75,9 +75,21 @@ class EVALUATOR(Enum):
 
     # Without gold standard (reference-free evaluation)
     REFERENCE_FREE = "reference_free_evaluator"  # Faithfulness + Context Relevance
+    LONGQA_ANSWER = "longqa_answer_evaluator"  # Medical answer quality (3 dimensions)
 
     # With gold standard (requires ground truth)
-    GOLD_STANDARD = "gold_standard_evaluator"  # Answer Similarity + Document Recall
+    BLEU = "bleu_evaluator"  # N-gram precision overlap
+    ROUGE = "rouge_evaluator"  # Recall-oriented n-gram overlap
+    METEOR = "meteor_evaluator"  # Advanced lexical with synonyms/stemming
+    ANSWER_QUALITY = (
+        "answer_quality_evaluator"  # LLM-as-judge (completeness + correctness)
+    )
+    FACT_MATCHING = (
+        "fact_matching_evaluator"  # LLM fact extraction with semantic matching
+    )
+    MORQA_FAITHFULNESS = (
+        "morqa_faithfulness_evaluator"  # Factual faithfulness evaluation
+    )
 
 
 # Union type for all component enums
@@ -200,8 +212,14 @@ def list_available_components() -> Dict[str, List[str]]:
 EVALUATOR_MODE_MAP: Dict[str, EvaluationMode] = {
     # Reference-free evaluators (no gold standard needed)
     "reference_free_evaluator": EvaluationMode.REFERENCE_FREE,
+    "longqa_answer_evaluator": EvaluationMode.REFERENCE_FREE,
     # Gold standard evaluators (require ground truth)
-    "gold_standard_evaluator": EvaluationMode.WITH_GOLD_STANDARD,
+    "bleu_evaluator": EvaluationMode.WITH_GOLD_STANDARD,
+    "rouge_evaluator": EvaluationMode.WITH_GOLD_STANDARD,
+    "meteor_evaluator": EvaluationMode.WITH_GOLD_STANDARD,
+    "answer_quality_evaluator": EvaluationMode.WITH_GOLD_STANDARD,
+    "fact_matching_evaluator": EvaluationMode.WITH_GOLD_STANDARD,
+    "morqa_faithfulness_evaluator": EvaluationMode.WITH_GOLD_STANDARD,
 }
 
 # Sets for quick lookup
