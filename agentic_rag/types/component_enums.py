@@ -76,6 +76,12 @@ class EVALUATOR(Enum):
     # Without gold standard (reference-free evaluation)
     REFERENCE_FREE = "reference_free_evaluator"  # Faithfulness + Context Relevance
     LONGQA_ANSWER = "longqa_answer_evaluator"  # Medical answer quality (3 dimensions)
+    ANSWER_STRUCTURE = "answer_structure_evaluator"  # LLM-as-judge (organization, formatting, hierarchy, clarity)
+    COHERENCE = "coherence_evaluator"  # Semantic coherence using sentence embeddings
+    COMMUNICATION_QUALITY = (
+        "communication_quality_evaluator"  # LLM-as-judge (tone, professionalism, bias)
+    )
+    READABILITY = "readability_evaluator"  # Multiple readability formulas (Flesch, Gunning Fog, etc.)
 
     # With gold standard (requires ground truth)
     BLEU = "bleu_evaluator"  # N-gram precision overlap
@@ -213,6 +219,10 @@ EVALUATOR_MODE_MAP: Dict[str, EvaluationMode] = {
     # Reference-free evaluators (no gold standard needed)
     "reference_free_evaluator": EvaluationMode.REFERENCE_FREE,
     "longqa_answer_evaluator": EvaluationMode.REFERENCE_FREE,
+    "answer_structure_evaluator": EvaluationMode.REFERENCE_FREE,
+    "coherence_evaluator": EvaluationMode.REFERENCE_FREE,
+    "communication_quality_evaluator": EvaluationMode.REFERENCE_FREE,
+    "readability_evaluator": EvaluationMode.REFERENCE_FREE,
     # Gold standard evaluators (require ground truth)
     "bleu_evaluator": EvaluationMode.WITH_GOLD_STANDARD,
     "rouge_evaluator": EvaluationMode.WITH_GOLD_STANDARD,

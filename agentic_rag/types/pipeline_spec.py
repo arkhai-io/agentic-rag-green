@@ -30,8 +30,6 @@ class PipelineSpec:
         """Validate pipeline specification."""
         if len(self.components) < 1:
             raise ValueError("Pipeline must have at least 1 component")
-        if len(self.components) > 10:
-            raise ValueError("Pipeline cannot have more than 10 components")
 
     def get_component_by_name(self, name: str) -> Optional[ComponentSpec]:
         """Get a component spec by name."""

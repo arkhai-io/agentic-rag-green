@@ -432,6 +432,69 @@ class ComponentRegistry:
             )
         )
 
+        # Ungrounded Evaluation Metrics - Answer Quality (No Gold Standard)
+        self.register_component(
+            ComponentSpec(
+                name="answer_structure_evaluator",
+                component_type=ComponentType.EVALUATOR,
+                haystack_class="agentic_rag.components.evaluators.AnswerStructureEvaluator",
+                input_types=[DataType.STRING, DataType.LIST_STRING],  # query, replies
+                output_types=[DataType.DICT],  # Single eval_data dict
+                pipeline_usage=PipelineUsage.RETRIEVAL,
+                dependencies=[],
+                default_config={
+                    "model": "anthropic/claude-3.5-sonnet",
+                    "base_url": "https://openrouter.ai/api/v1",
+                },
+                parallelizable=False,
+            )
+        )
+
+        self.register_component(
+            ComponentSpec(
+                name="coherence_evaluator",
+                component_type=ComponentType.EVALUATOR,
+                haystack_class="agentic_rag.components.evaluators.CoherenceEvaluator",
+                input_types=[DataType.STRING, DataType.LIST_STRING],  # query, replies
+                output_types=[DataType.DICT],  # Single eval_data dict
+                pipeline_usage=PipelineUsage.RETRIEVAL,
+                dependencies=[],
+                default_config={"embedding_model": "all-MiniLM-L6-v2"},
+                parallelizable=False,
+            )
+        )
+
+        self.register_component(
+            ComponentSpec(
+                name="communication_quality_evaluator",
+                component_type=ComponentType.EVALUATOR,
+                haystack_class="agentic_rag.components.evaluators.CommunicationQualityEvaluator",
+                input_types=[DataType.STRING, DataType.LIST_STRING],  # query, replies
+                output_types=[DataType.DICT],  # Single eval_data dict
+                pipeline_usage=PipelineUsage.RETRIEVAL,
+                dependencies=[],
+                default_config={
+                    "model": "anthropic/claude-3.5-sonnet",
+                    "base_url": "https://openrouter.ai/api/v1",
+                },
+                parallelizable=False,
+            )
+        )
+
+        self.register_component(
+            ComponentSpec(
+                name="readability_evaluator",
+                component_type=ComponentType.EVALUATOR,
+                haystack_class="agentic_rag.components.evaluators.ReadabilityEvaluator",
+                input_types=[DataType.STRING, DataType.LIST_STRING],  # query, replies
+                output_types=[DataType.DICT],  # Single eval_data dict
+                pipeline_usage=PipelineUsage.RETRIEVAL,
+                dependencies=[],
+                default_config={},
+                parallelizable=False,
+            )
+        )
+
 
 # Global registry instance
 _default_registry: Optional[ComponentRegistry] = None
