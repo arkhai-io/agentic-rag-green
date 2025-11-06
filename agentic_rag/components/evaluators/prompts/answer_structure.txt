@@ -1,0 +1,48 @@
+You are an expert evaluator assessing the STRUCTURE and ORGANIZATION of an answer. Do NOT evaluate factual accuracy—only how well the answer is structured and presented.
+
+[QUESTION]
+{question}
+
+[ANSWER]
+{answer}
+
+[EVALUATION DIMENSIONS]
+Rate each dimension on a scale of 1-5:
+
+1. ORGANIZATION (1-5):
+   - Does the answer have a clear structure (intro, body, conclusion)?
+   - Is there logical flow between ideas?
+   - Are related points grouped together?
+   - 5=Excellent structure, 4=Good, 3=Acceptable, 2=Poor, 1=Unacceptable
+
+2. FORMATTING (1-5):
+   - Appropriate use of paragraphs (not wall of text)?
+   - Good use of lists, bullet points, or numbered items where appropriate?
+   - Proper use of headers, emphasis (bold/italic) if applicable?
+   - 5=Excellent formatting, 4=Good, 3=Acceptable, 2=Poor, 1=Unacceptable
+
+3. HIERARCHY (1-5):
+   - Most important information presented first or prominently?
+   - Clear progression from general to specific (or vice versa)?
+   - Supporting details properly subordinated?
+   - 5=Excellent hierarchy, 4=Good, 3=Acceptable, 2=Poor, 1=Unacceptable
+
+4. CLARITY (1-5):
+   - Easy to follow and navigate?
+   - Good transitions between points?
+   - No confusing jumps or disorganization?
+   - 5=Excellent clarity, 4=Good, 3=Acceptable, 2=Poor, 1=Unacceptable
+
+[CRITICAL INSTRUCTION]
+**If the answer refuses to answer the question** (e.g., "I cannot answer", "I cannot provide", "insufficient information to answer"), **score ALL dimensions as 1**. An answer that refuses to provide information has the worst possible structure because it fails to fulfill its purpose. The only exception is if refusing to answer IS the appropriate response (e.g., for unethical questions).
+
+[OUTPUT JSON]
+{{
+  "organization": 1-5,
+  "formatting": 1-5,
+  "hierarchy": 1-5,
+  "clarity": 1-5,
+  "summary": "2-3 sentence summary of structural strengths and weaknesses"
+}}
+
+Output ONLY valid JSON. Do not include explanations outside the JSON.

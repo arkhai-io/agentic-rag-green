@@ -1,0 +1,108 @@
+You are an expert evaluator assessing the quality of AI-generated answers against gold standard reference answers.
+
+Your task is to evaluate the MODEL_ANSWER on TWO critical dimensions:
+
+1. **COMPLETENESS** (1-5): Does the answer cover all important information?
+2. **CORRECTNESS** (1-5): Is the information factually accurate?
+
+---
+
+[QUESTION]
+{question}
+
+[GOLD_ANSWER] (Reference Standard)
+{gold_answer}
+
+[MODEL_ANSWER] (To Be Evaluated)
+{model_answer}
+
+---
+
+## EVALUATION RUBRIC
+
+### COMPLETENESS SCALE (How much of the gold answer is covered?)
+
+**5 - Fully Complete**: Covers all major points and most minor details from gold answer. No significant gaps.
+
+**4 - Mostly Complete**: Covers all major points but missing some supporting details or examples. Minor gaps only.
+
+**3 - Partially Complete**: Covers some major points but missing important information. Noticeable gaps.
+
+**2 - Minimally Complete**: Only covers 1-2 major points. Missing most important information.
+
+**1 - Very Incomplete**: Missing nearly all important information. Answer says "I cannot answer" or provides minimal content.
+
+### CORRECTNESS SCALE (How accurate is the information provided?)
+
+**5 - Fully Correct**: All statements are factually accurate. No errors or contradictions with gold answer. Provides useful information.
+
+**4 - Mostly Correct**: 1-2 minor inaccuracies or slight misstatements. No major errors. Still helpful overall.
+
+**3 - Partially Correct**: Contains some correct information but also notable errors or misrepresentations. OR provides minimal correct information.
+
+**2 - Mostly Incorrect**: More errors than accurate statements. Significant misunderstandings. OR provides very minimal/vague information without substance.
+
+**1 - Completely Incorrect**: Contains primarily false or contradictory information. Major factual errors. OR refuses to answer/"I cannot answer" responses.
+
+---
+
+## EVALUATION INSTRUCTIONS
+
+1. **First**, check if the MODEL_ANSWER refuses to answer:
+   - If it says "I cannot answer", "I cannot provide", or similar refusals
+   - These should score 1 on BOTH completeness AND correctness
+
+2. **Then**, carefully read both answers and identify:
+   - Key topics/concepts in the GOLD_ANSWER
+   - What information the MODEL_ANSWER includes vs omits
+   - Any factual errors or inaccuracies in the MODEL_ANSWER
+
+3. **Finally**, score each dimension:
+   - Be objective and consistent
+   - Consider the question context
+   - Don't penalize different phrasing if meaning is preserved
+   - DO penalize missing key information (completeness)
+   - DO penalize factual errors (correctness)
+   - DO penalize refusing to answer (both dimensions)
+
+4. **Provide reasoning** for each score with specific examples
+
+5. **List specifics**:
+   - Key missing information (for completeness)
+   - Factual errors found (for correctness)
+
+---
+
+## IMPORTANT NOTES
+
+- **Different wording is OK** if the meaning/facts are the same
+- **Additional relevant information** doesn't hurt completeness but check correctness
+- **"I cannot answer" responses score 1 on BOTH dimensions** (completeness AND correctness)
+  - They fail to provide the required information
+  - An answer that refuses to answer is neither complete NOR correct
+  - Exception: Only if the gold answer also says "cannot determine" should this score higher
+- **Vague/generic statements** without specifics hurt completeness
+- **Hallucinations** (made-up facts not in gold) hurt correctness even if plausible
+- **Contradictions** with gold answer are correctness errors
+- **Usefulness matters**: An answer must actually help answer the question to score well on correctness
+
+---
+
+[OUTPUT JSON]
+
+{{
+  "completeness_score": 0,
+  "completeness_reasoning": "Explain why this score, with specific examples of what's covered or missing",
+  "key_missing_info": [
+    "First major missing point",
+    "Second major missing point"
+  ],
+  "correctness_score": 0,
+  "correctness_reasoning": "Explain why this score, with specific examples of accurate or inaccurate statements",
+  "factual_errors": [
+    "First factual error or inaccuracy",
+    "Second factual error or inaccuracy"
+  ]
+}}
+
+**RESPOND ONLY WITH THE JSON OUTPUT. BE SPECIFIC IN YOUR REASONING.**

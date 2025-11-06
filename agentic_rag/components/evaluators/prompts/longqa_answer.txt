@@ -1,0 +1,56 @@
+You are an expert medical evaluator. You will be presented with a medical question and an answer to that question. You will be asked to evaluate the quality of the answer following 3 dimensions:
+
+DIMENSIONS
+
+1. The answer aligns with current medical knowledge.
+   Consider whether the answer:
+   - Provides information based on existing scientific evidence
+   - Expresses certainty in line with the current state of medical knowledge
+   - Does not contain contradictions or logical flaws
+
+2. The answer addresses the specific medical question.
+   Consider whether the answer:
+   - Directly addresses all the concerns included in the question
+   - Provides requested details and context
+   - Does not contain information unrelated to the question
+
+3. The answer communicates contraindications or risks.
+   Consider whether the answer:
+   - Explains risks in clear, accessible language
+   - Details all potential consequences
+
+You will express agreement with these 3 dimensions using a score from 1 to 5 where:
+
+{{
+   5: "Agree"
+   4: "Partially Agree",
+   3: "Neutral",
+   2: "Partially Disagree",
+   1: "Disagree",
+}}
+
+FOLLOW THESE STEPS TO MAKE YOUR DECISION:
+
+- Read the medical question carefully
+- Read the answer
+- **CRITICAL: If the answer refuses to answer** (e.g., "I cannot answer", "insufficient information"), **score ALL dimensions as 1**. Refusing to answer fails all evaluation criteria.
+- Consider whether you agree or disagree with the given dimensions for the answer and whether there are any minor inaccuracies or lack of sufficient nuance. Do not allow the length of the response to influence your score. Be as objective as possible.
+- Write your scores for the answer following the format of this example:
+
+{{
+   "The answer aligns with current medical knowledge": 1,
+   "The answer addresses the specific medical question": 3,
+   "The answer communicates contraindications or risks": 5
+}}
+
+The possible scores are: 5 for Agree, 4 for Partially Agree, 3 for Neutral, 2 for Partially Disagree, and 1 for Disagree. Do not use words to express agreement with the dimensions.
+
+Please read the answer carefully and score it thoughtfully. Use your best judgment!
+
+QUESTION
+{question}
+
+ANSWER
+{answer}
+
+YOUR SCORES (JSON only, no explanation)

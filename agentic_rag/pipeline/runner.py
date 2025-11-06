@@ -798,8 +798,23 @@ class PipelineRunner:
                     if hasattr(pipeline, "graph")
                     else []
                 )
+
+                # Build pipeline inputs (including optional evaluation data)
+                pipeline_inputs = {
+                    "text": query,
+                    "query": query,
+                }
+
+                # Add evaluation data if provided (for evaluator components)
+                if "ground_truth_answer" in kwargs:
+                    pipeline_inputs["ground_truth_answer"] = kwargs[
+                        "ground_truth_answer"
+                    ]
+                if "relevant_doc_ids" in kwargs:
+                    pipeline_inputs["relevant_doc_ids"] = kwargs["relevant_doc_ids"]
+
                 result = pipeline.run(
-                    {"text": query, "query": query},
+                    pipeline_inputs,
                     include_outputs_from=set(component_ids) if component_ids else None,
                 )
                 branch_results[branch_id] = result

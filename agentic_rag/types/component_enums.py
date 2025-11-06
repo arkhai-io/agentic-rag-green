@@ -1,7 +1,7 @@
 """Typed enums for all component categories."""
 
 from enum import Enum
-from typing import Dict, List, Type, Union
+from typing import Dict, List, Set, Type, Union
 
 
 class CONVERTER(Enum):
@@ -63,9 +63,52 @@ class DOCUMENT_STORE(Enum):
     CHROMA = "chroma_document_store"
 
 
+class EvaluationMode(Enum):
+    """Mode for evaluation - determines if gold standard is required."""
+
+    REFERENCE_FREE = "reference_free"  # No gold standard needed
+    WITH_GOLD_STANDARD = "with_gold_standard"  # Requires ground truth data
+
+
+class EVALUATOR(Enum):
+    """Evaluation components for assessing retrieval and generation quality."""
+
+    # Without gold standard (reference-free evaluation)
+    REFERENCE_FREE = "reference_free_evaluator"  # Faithfulness + Context Relevance
+    LONGQA_ANSWER = "longqa_answer_evaluator"  # Medical answer quality (3 dimensions)
+    ANSWER_STRUCTURE = "answer_structure_evaluator"  # LLM-as-judge (organization, formatting, hierarchy, clarity)
+    COHERENCE = "coherence_evaluator"  # Semantic coherence using sentence embeddings
+    COMMUNICATION_QUALITY = (
+        "communication_quality_evaluator"  # LLM-as-judge (tone, professionalism, bias)
+    )
+    READABILITY = "readability_evaluator"  # Multiple readability formulas (Flesch, Gunning Fog, etc.)
+
+    # With gold standard (requires ground truth)
+    BLEU = "bleu_evaluator"  # N-gram precision overlap
+    ROUGE = "rouge_evaluator"  # Recall-oriented n-gram overlap
+    METEOR = "meteor_evaluator"  # Advanced lexical with synonyms/stemming
+    ANSWER_QUALITY = (
+        "answer_quality_evaluator"  # LLM-as-judge (completeness + correctness)
+    )
+    FACT_MATCHING = (
+        "fact_matching_evaluator"  # LLM fact extraction with semantic matching
+    )
+    MORQA_FAITHFULNESS = (
+        "morqa_faithfulness_evaluator"  # Factual faithfulness evaluation
+    )
+
+
 # Union type for all component enums
 ComponentEnum = Union[
-    CONVERTER, CHUNKER, EMBEDDER, DOCUMENT_STORE, RETRIEVER, RANKER, GENERATOR, WRITER
+    CONVERTER,
+    CHUNKER,
+    EMBEDDER,
+    DOCUMENT_STORE,
+    RETRIEVER,
+    RANKER,
+    GENERATOR,
+    WRITER,
+    EVALUATOR,
 ]
 
 
@@ -79,6 +122,7 @@ COMPONENT_ENUM_MAP: Dict[str, Type[Enum]] = {
     "RANKER": RANKER,
     "GENERATOR": GENERATOR,
     "WRITER": WRITER,
+    "EVALUATOR": EVALUATOR,
 }
 
 # Reverse mapping from component values to enum classes
@@ -168,3 +212,66 @@ def list_available_components() -> Dict[str, List[str]]:
     for category, enum_class in COMPONENT_ENUM_MAP.items():
         result[category] = [member.name for member in enum_class]
     return result
+
+
+# Mapping evaluators to their evaluation modes
+EVALUATOR_MODE_MAP: Dict[str, EvaluationMode] = {
+    # Reference-free evaluators (no gold standard needed)
+    "reference_free_evaluator": EvaluationMode.REFERENCE_FREE,
+    "longqa_answer_evaluator": EvaluationMode.REFERENCE_FREE,
+    "answer_structure_evaluator": EvaluationMode.REFERENCE_FREE,
+    "coherence_evaluator": EvaluationMode.REFERENCE_FREE,
+    "communication_quality_evaluator": EvaluationMode.REFERENCE_FREE,
+    "readability_evaluator": EvaluationMode.REFERENCE_FREE,
+    # Gold standard evaluators (require ground truth)
+    "bleu_evaluator": EvaluationMode.WITH_GOLD_STANDARD,
+    "rouge_evaluator": EvaluationMode.WITH_GOLD_STANDARD,
+    "meteor_evaluator": EvaluationMode.WITH_GOLD_STANDARD,
+    "answer_quality_evaluator": EvaluationMode.WITH_GOLD_STANDARD,
+    "fact_matching_evaluator": EvaluationMode.WITH_GOLD_STANDARD,
+    "morqa_faithfulness_evaluator": EvaluationMode.WITH_GOLD_STANDARD,
+}
+
+# Sets for quick lookup
+REFERENCE_FREE_EVALUATORS: Set[str] = {
+    evaluator
+    for evaluator, mode in EVALUATOR_MODE_MAP.items()
+    if mode == EvaluationMode.REFERENCE_FREE
+}
+
+GOLD_STANDARD_EVALUATORS: Set[str] = {
+    evaluator
+    for evaluator, mode in EVALUATOR_MODE_MAP.items()
+    if mode == EvaluationMode.WITH_GOLD_STANDARD
+}
+
+
+def requires_gold_standard(evaluator_name: str) -> bool:
+    """
+    Check if an evaluator requires gold standard data.
+
+    Args:
+        evaluator_name: Name of the evaluator component
+
+    Returns:
+        True if evaluator requires ground truth data, False otherwise
+    """
+    return evaluator_name in GOLD_STANDARD_EVALUATORS
+
+
+def get_evaluator_mode(evaluator_name: str) -> EvaluationMode:
+    """
+    Get the evaluation mode for an evaluator.
+
+    Args:
+        evaluator_name: Name of the evaluator component
+
+    Returns:
+        EvaluationMode enum value
+
+    Raises:
+        ValueError: If evaluator name is not recognized
+    """
+    if evaluator_name not in EVALUATOR_MODE_MAP:
+        raise ValueError(f"Unknown evaluator: {evaluator_name}")
+    return EVALUATOR_MODE_MAP[evaluator_name]

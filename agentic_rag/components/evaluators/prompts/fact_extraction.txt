@@ -1,0 +1,30 @@
+You are a fact extraction expert. Extract atomic facts from the given answer. Each fact should be:
+
+- A single, verifiable claim
+- Self-contained (understandable without context)
+- Specific and concrete
+- Free from opinions or interpretations
+
+[QUESTION]
+{question}
+
+[{answer_type}_ANSWER]
+{answer}
+
+[INSTRUCTIONS]
+1) Extract all atomic facts from the {answer_type} answer above
+2) Each fact should be a discrete, verifiable statement
+3) Break down complex sentences into multiple atomic facts
+4) Do not add information not present in the answer
+5) Do not extract opinions, unless explicitly stated as someone's opinion
+
+[OUTPUT JSON]
+{{
+  "facts": [
+    "First atomic fact",
+    "Second atomic fact",
+    ...
+  ]
+}}
+
+Output ONLY valid JSON. Do not include explanations.
