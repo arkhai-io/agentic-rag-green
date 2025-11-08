@@ -168,6 +168,18 @@ class PipelineFactory:
 
             # Configure the spec directly with user config
             user_config = config.get(component_name, {})
+
+            # Auto-generate root_dir for chroma_document_writer if not provided
+            if (
+                component_name == "chroma_document_writer"
+                and "root_dir" not in user_config
+            ):
+                user_config = user_config.copy()  # Don't modify original config
+                user_config["root_dir"] = f"./data/{username}/{pipeline_name}"
+                self.logger.debug(
+                    f"Auto-generated root_dir for chroma_document_writer: {user_config['root_dir']}"
+                )
+
             configured_spec = spec.configure(user_config)
 
             # Store the original full type string
