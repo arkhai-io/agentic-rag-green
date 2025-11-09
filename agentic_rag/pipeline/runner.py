@@ -87,10 +87,8 @@ class PipelineRunner:
                 self.logger.debug(f"Building Haystack components: {pipeline_name}")
                 self.build_haystack_components_from_graph(pipeline_name)
 
-                # Detect pipeline type based on name
-                pipeline_type = (
-                    "retrieval" if "retrieval" in pipeline_name.lower() else "indexing"
-                )
+                # Get pipeline type from Neo4j (stored in component nodes)
+                pipeline_type = self._get_pipeline_type(pipeline_name)
 
                 # Create connected pipeline
                 self.logger.debug(
@@ -106,6 +104,41 @@ class PipelineRunner:
                 self.logger.warning(f"Could not load {pipeline_name}: {e}")
 
         self.logger.info(f"Total pipelines loaded: {len(self._haystack_pipelines)}")
+
+    def _get_pipeline_type(self, pipeline_name: str) -> str:
+        """
+        Get the pipeline type from loaded component metadata.
+
+        Args:
+            pipeline_name: Name of the pipeline
+
+        Returns:
+            str: "indexing" or "retrieval"
+
+        Raises:
+            ValueError: If pipeline type cannot be determined
+        """
+        if pipeline_name not in self._pipeline_graphs:
+            raise ValueError(f"Pipeline {pipeline_name} not loaded")
+
+        components = self._pipeline_graphs[pipeline_name]
+        if not components:
+            raise ValueError(f"No components found for pipeline {pipeline_name}")
+
+        # Get pipeline_type from first component (all components have same pipeline_type)
+        pipeline_type = components[0].get("pipeline_type")
+
+        if not pipeline_type:
+            # Fallback to old auto-detection if pipeline_type not stored
+            self.logger.warning(
+                f"Pipeline type not found in Neo4j for {pipeline_name}, "
+                "using fallback detection"
+            )
+            pipeline_type = (
+                "retrieval" if "retrieval" in pipeline_name.lower() else "indexing"
+            )
+
+        return pipeline_type
 
     def load_pipeline_graph(self, pipeline_hashes: List[str], username: str) -> None:
         """

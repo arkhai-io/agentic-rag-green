@@ -141,6 +141,7 @@ class PipelineFactory:
         config: Dict[str, Any],
         username: str,
         branch_id: Optional[str] = None,
+        pipeline_type: Optional[PipelineType] = None,
     ) -> PipelineSpec:
         """
         Build an indexing pipeline.
@@ -191,7 +192,7 @@ class PipelineFactory:
         pipeline_spec = PipelineSpec(
             name=pipeline_name,
             components=component_specs_list,
-            pipeline_type=PipelineType.INDEXING,
+            pipeline_type=pipeline_type or PipelineType.INDEXING,
         )
 
         # Build the graph representation
@@ -463,12 +464,14 @@ class PipelineFactory:
             pipeline_config = retrieval_pipelines_configs[indexing_pipeline_name]
 
             # Build pipeline using indexing builder with branch_id
+            # Set pipeline_type to RETRIEVAL for retrieval branches
             built_pipeline = self._build_indexing_pipeline(
                 component_specs=pipeline_spec,
                 pipeline_name=pipeline_name,
                 config=pipeline_config,
                 username=username,
                 branch_id=indexing_pipeline_name,
+                pipeline_type=PipelineType.RETRIEVAL,
             )
 
             built_pipeline.indexing_pipelines = [indexing_pipeline_name]

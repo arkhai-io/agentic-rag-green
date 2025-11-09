@@ -15,6 +15,7 @@ class ComponentNode:
     author: str
     component_config: Dict[str, Any]
     component_type: Optional[str] = None  # e.g., "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"
+    pipeline_type: Optional[str] = None  # "indexing" or "retrieval"
     branch_id: Optional[str] = (
         None  # For retrieval pipelines: identifies which indexing pipeline branch
     )
@@ -71,6 +72,9 @@ class ComponentNode:
         if self.component_type:
             result["component_type"] = self.component_type
 
+        if self.pipeline_type:
+            result["pipeline_type"] = self.pipeline_type
+
         if self.branch_id:
             result["branch_id"] = self.branch_id
 
@@ -91,6 +95,7 @@ class ComponentNode:
             author=data["author"],
             component_config=component_config,
             component_type=data.get("component_type"),
+            pipeline_type=data.get("pipeline_type"),
             branch_id=data.get("branch_id"),
             id=data.get("id"),
             cache_key=data.get("cache_key"),

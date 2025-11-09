@@ -53,6 +53,7 @@ class GraphStorage:
                 component_type=(
                     component_spec.full_type if component_spec.full_type else None
                 ),
+                pipeline_type=spec.pipeline_type.value if spec.pipeline_type else None,
                 branch_id=branch_id,
             )
             node_dict = node.to_dict()
