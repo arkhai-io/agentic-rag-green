@@ -6,7 +6,7 @@ ARCHITECTURE:
 """
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from ..components import GraphStore
 from ..types import PipelineUsage

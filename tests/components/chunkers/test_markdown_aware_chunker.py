@@ -10,6 +10,7 @@ class TestCustomComponentsPipeline:
     def test_markdown_chunker_available_in_registry(self):
         """Test that MarkdownAwareChunker is registered and available."""
         from unittest.mock import MagicMock
+
         from agentic_rag.components import GraphStore
 
         available = list_available_components()
@@ -65,6 +66,7 @@ Final content section with additional text to make sure we have enough content t
     def test_custom_component_enum_parsing(self):
         """Test that CHUNKER.MARKDOWN_AWARE enum is correctly parsed."""
         from unittest.mock import MagicMock
+
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)

@@ -112,9 +112,7 @@ class PipelineFactory:
 
         # Route to appropriate builder based on pipeline type
         if pipeline_type == "indexing":
-            return self._build_indexing_pipeline(
-                component_specs, pipeline_name, config
-            )
+            return self._build_indexing_pipeline(component_specs, pipeline_name, config)
         elif pipeline_type == "retrieval":
             return self._build_retrieval_pipeline(
                 component_specs, pipeline_name, config
@@ -188,7 +186,9 @@ class PipelineFactory:
             self.logger.info(
                 f"Creating graph representation for indexing pipeline '{pipeline_name}'"
             )
-            self.graph_storage.build_pipeline_graph(pipeline_spec, self.username, branch_id)
+            self.graph_storage.build_pipeline_graph(
+                pipeline_spec, self.username, branch_id
+            )
         else:
             self.logger.warning("No graph store configured, pipeline graph not created")
 

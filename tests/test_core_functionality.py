@@ -33,6 +33,7 @@ class TestCoreFunctionality:
     def test_factory_creation(self) -> None:
         """Test that factory can be created."""
         from unittest.mock import MagicMock
+
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
@@ -43,6 +44,7 @@ class TestCoreFunctionality:
     def test_component_parsing(self) -> None:
         """Test parsing component specifications."""
         from unittest.mock import MagicMock
+
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
@@ -65,6 +67,7 @@ class TestCoreFunctionality:
     def test_component_lookup(self) -> None:
         """Test looking up component specifications."""
         from unittest.mock import MagicMock
+
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
@@ -90,6 +93,7 @@ class TestCoreFunctionality:
     def test_invalid_specifications(self) -> None:
         """Test error handling for invalid specifications."""
         from unittest.mock import MagicMock
+
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
@@ -116,6 +120,7 @@ class TestCoreFunctionality:
     def test_pipeline_spec_creation_without_building(self) -> None:
         """Test creating pipeline specs without building Haystack pipelines."""
         from unittest.mock import MagicMock
+
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
@@ -145,6 +150,7 @@ class TestCoreFunctionality:
     def test_config_merging_logic(self) -> None:
         """Test configuration merging without building components."""
         from unittest.mock import MagicMock
+
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)

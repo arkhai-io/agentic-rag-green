@@ -421,12 +421,15 @@ class TestMarkItDownPDFToDocument:
             c.save()
 
             # Create pipeline with MarkItDown converter using factory
-            from agentic_rag import PipelineFactory
             from unittest.mock import MagicMock
+
+            from agentic_rag import PipelineFactory
             from agentic_rag.components import GraphStore
 
             mock_graph_store = MagicMock(spec=GraphStore)
-            factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
+            factory = PipelineFactory(
+                graph_store=mock_graph_store, username="test_user"
+            )
             pipeline_spec = [
                 {"type": "CONVERTER.MARKITDOWN_PDF"},
                 {"type": "CHUNKER.MARKDOWN_AWARE"},
@@ -469,12 +472,15 @@ class TestMarkItDownPDFToDocument:
     def test_error_handling_with_markitdown_converter(self):
         """Test error handling in pipeline context."""
         try:
-            from agentic_rag import PipelineFactory
             from unittest.mock import MagicMock
+
+            from agentic_rag import PipelineFactory
             from agentic_rag.components import GraphStore
 
             mock_graph_store = MagicMock(spec=GraphStore)
-            factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
+            factory = PipelineFactory(
+                graph_store=mock_graph_store, username="test_user"
+            )
 
             # Create pipeline with MarkItDown converter
             pipeline_spec = [{"type": "CONVERTER.MARKITDOWN_PDF"}]
