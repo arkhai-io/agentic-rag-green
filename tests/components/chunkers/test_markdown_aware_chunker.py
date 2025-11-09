@@ -9,6 +9,9 @@ class TestCustomComponentsPipeline:
 
     def test_markdown_chunker_available_in_registry(self):
         """Test that MarkdownAwareChunker is registered and available."""
+        from unittest.mock import MagicMock
+        from agentic_rag.components import GraphStore
+
         available = list_available_components()
 
         # Check that CHUNKER category exists and includes our custom component
@@ -16,7 +19,8 @@ class TestCustomComponentsPipeline:
         assert "MARKDOWN_AWARE" in available["CHUNKER"]
 
         # Test component can be retrieved from registry
-        factory = PipelineFactory()
+        mock_graph_store = MagicMock(spec=GraphStore)
+        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
         spec = factory.registry.get_component_spec("markdown_aware_chunker")
 
         assert spec is not None
@@ -60,7 +64,11 @@ Final content section with additional text to make sure we have enough content t
 
     def test_custom_component_enum_parsing(self):
         """Test that CHUNKER.MARKDOWN_AWARE enum is correctly parsed."""
-        factory = PipelineFactory()
+        from unittest.mock import MagicMock
+        from agentic_rag.components import GraphStore
+
+        mock_graph_store = MagicMock(spec=GraphStore)
+        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
 
         # Parse the enum-style specification
         parsed_name = factory._parse_component_spec({"type": "CHUNKER.MARKDOWN_AWARE"})

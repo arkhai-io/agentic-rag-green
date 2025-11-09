@@ -46,7 +46,7 @@ class TestGraphPipelineArchitecture:
 
     def test_factory_builds_pipeline_graph(self, mock_graph_store):
         """Test that factory builds and stores pipeline graph in Neo4j."""
-        factory = PipelineFactory(graph_store=mock_graph_store)
+        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
 
         pipeline_spec = [
             {"type": "CONVERTER.PDF"},
@@ -64,8 +64,7 @@ class TestGraphPipelineArchitecture:
 
     def test_runner_loads_pipeline_graph(self, mock_graph_store):
         """Test that runner can load pipeline graph from Neo4j."""
-        factory = PipelineFactory(graph_store=mock_graph_store)
-        runner = PipelineRunner(graph_store=mock_graph_store)
+        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
 
         # First, create a pipeline
         pipeline_spec = [
@@ -84,6 +83,7 @@ class TestGraphPipelineArchitecture:
                 "component_type": "CONVERTER.PDF",
                 "component_config_json": "{}",
                 "pipeline_name": "load_test_pipeline",
+                "pipeline_type": "indexing",
                 "next_components": ["comp_2"],
                 "node_labels": ["Component"],
             },
@@ -93,14 +93,17 @@ class TestGraphPipelineArchitecture:
                 "component_type": "CHUNKER.DOCUMENT_SPLITTER",
                 "component_config_json": '{"split_by":"sentence","split_length":512}',
                 "pipeline_name": "load_test_pipeline",
+                "pipeline_type": "indexing",
                 "next_components": [],
                 "node_labels": ["Component"],
             },
         ]
 
-        # Now load it with runner
-        runner.load_pipeline_graph(
-            pipeline_hashes=["load_test_pipeline"], username="test_user"
+        # Now create runner - it will automatically load the pipeline
+        runner = PipelineRunner(
+            graph_store=mock_graph_store,
+            username="test_user",
+            pipeline_names=["load_test_pipeline"],
         )
 
         # Verify graph data was loaded
@@ -109,8 +112,7 @@ class TestGraphPipelineArchitecture:
 
     def test_runner_builds_haystack_components(self, mock_graph_store):
         """Test that runner builds runtime Haystack components from graph."""
-        factory = PipelineFactory(graph_store=mock_graph_store)
-        runner = PipelineRunner(graph_store=mock_graph_store)
+        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
 
         # Create pipeline
         pipeline_spec = [
@@ -131,6 +133,7 @@ class TestGraphPipelineArchitecture:
                 "component_type": "CONVERTER.PDF",
                 "component_config_json": "{}",
                 "pipeline_name": "component_test_pipeline",
+                "pipeline_type": "indexing",
                 "cache_key": "cache_123",
                 "next_components": ["comp_2"],
                 "node_labels": ["Component"],
@@ -141,19 +144,19 @@ class TestGraphPipelineArchitecture:
                 "component_type": "CHUNKER.DOCUMENT_SPLITTER",
                 "component_config_json": '{"split_by":"sentence","split_length":512}',
                 "pipeline_name": "component_test_pipeline",
+                "pipeline_type": "indexing",
                 "cache_key": "cache_456",
                 "next_components": [],
                 "node_labels": ["Component"],
             },
         ]
 
-        # Load from graph
-        runner.load_pipeline_graph(
-            pipeline_hashes=["component_test_pipeline"], username="test_user"
+        # Create runner - it will automatically load and build the pipeline
+        runner = PipelineRunner(
+            graph_store=mock_graph_store,
+            username="test_user",
+            pipeline_names=["component_test_pipeline"],
         )
-
-        # Build Haystack components (returns None, populates internal state)
-        runner.build_haystack_components_from_graph("component_test_pipeline")
 
         # Verify components were built
         assert "component_test_pipeline" in runner._haystack_components_by_pipeline
@@ -161,18 +164,16 @@ class TestGraphPipelineArchitecture:
         assert components is not None
         assert len(components) >= 2  # At least the 2 components we added
 
-    def test_runner_requires_graph_store(self):
-        """Test that runner requires GraphStore to be configured."""
-        runner_no_store = PipelineRunner()
-
-        with pytest.raises(RuntimeError, match="No graph store configured"):
-            runner_no_store.load_pipeline_graph(
-                pipeline_hashes=["test"], username="test"
-            )
+    def test_runner_requires_parameters(self):
+        """Test that runner requires all parameters."""
+        # PipelineRunner now requires graph_store, username, and pipeline_names
+        # This should raise TypeError when called without required parameters
+        with pytest.raises(TypeError):
+            PipelineRunner()
 
     def test_pipeline_with_config(self, mock_graph_store):
         """Test pipeline creation with custom configuration."""
-        factory = PipelineFactory(graph_store=mock_graph_store)
+        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
 
         pipeline_spec = [
             {"type": "CHUNKER.DOCUMENT_SPLITTER"},
@@ -202,14 +203,15 @@ class TestGraphPipelineArchitecture:
 
     def test_invalid_pipeline_hash_handling(self, mock_graph_store):
         """Test handling of invalid pipeline hashes."""
-        runner = PipelineRunner(graph_store=mock_graph_store)
-
         # Mock empty response for nonexistent pipeline
         mock_graph_store.validate_user_exists.return_value = True
         mock_graph_store.get_pipeline_components_by_hash.return_value = []
 
-        runner.load_pipeline_graph(
-            pipeline_hashes=["nonexistent_pipeline"], username="test_user"
+        # PipelineRunner will try to load during init and will log a warning
+        runner = PipelineRunner(
+            graph_store=mock_graph_store,
+            username="test_user",
+            pipeline_names=["nonexistent_pipeline"],
         )
 
         # Should load empty/missing data for non-existent pipeline

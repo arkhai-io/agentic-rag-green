@@ -120,7 +120,6 @@ def create_indexing_pipelines() -> List:
         pipeline_specs=pipeline_specs,
         configs=configs,
         pipeline_types=["indexing", "indexing"],
-        username=USERNAME,
     )
 
     graph_store.close()

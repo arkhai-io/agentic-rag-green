@@ -155,7 +155,6 @@ def create_retrieval_pipeline() -> Any:
         pipeline_specs=[pipeline_spec],
         configs=[config],
         pipeline_types=["retrieval"],
-        username=USERNAME,
     )
 
     graph_store.close()

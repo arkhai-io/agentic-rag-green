@@ -19,9 +19,9 @@ class PipelineRunner:
 
     def __init__(
         self,
-        graph_store: Optional[GraphStore] = None,
-        username: Optional[str] = None,
-        pipeline_names: Optional[List[str]] = None,
+        graph_store: GraphStore,
+        username: str,
+        pipeline_names: List[str],
         enable_caching: bool = False,
     ) -> None:
         """
@@ -29,26 +29,18 @@ class PipelineRunner:
 
         Args:
             graph_store: GraphStore for loading pipelines from Neo4j
-            username: Username to load pipelines for (auto-loads pipelines if provided)
+            username: Username to load pipelines for
             pipeline_names: List of pipeline names to load (e.g., ['pdf_indexing_pipeline'])
-                          If None and username is provided, loads all pipelines for user
             enable_caching: If True, wraps components with GatedComponent for caching
         """
         self.graph_store = graph_store
         self.username = username
         self.enable_caching = enable_caching
-        self.logger = (
-            get_logger(__name__, username=username)
-            if username
-            else get_logger(__name__)
-        )
-        self.metrics = MetricsCollector(username=username) if username else None
+        self.logger = get_logger(__name__, username=username)
+        self.metrics = MetricsCollector(username=username)
 
         # Configure Haystack logging to use same log files
-        if username:
-            configure_haystack_logging(username=username, level="DEBUG")
-        else:
-            configure_haystack_logging(level="DEBUG")
+        configure_haystack_logging(username=username, level="DEBUG")
 
         # Graph representations from Neo4j for multiple pipelines
         self._pipeline_graphs: Dict[str, List[Dict[str, Any]]] = {}
@@ -57,31 +49,24 @@ class PipelineRunner:
         # Actual Haystack Pipeline objects (connected and ready to run)
         self._haystack_pipelines: Dict[str, Any] = {}
 
-        # Auto-load and build pipelines if username is provided
-        if username and graph_store:
-            self.logger.info(f"Initializing PipelineRunner for user: {username}")
-            self._auto_load_pipelines(pipeline_names)
+        # Auto-load and build pipelines
+        self.logger.info(f"Initializing PipelineRunner for user: {username}")
+        self._auto_load_pipelines(pipeline_names)
 
-    def _auto_load_pipelines(self, pipeline_names: Optional[List[str]] = None) -> None:
+    def _auto_load_pipelines(self, pipeline_names: List[str]) -> None:
         """
         Automatically load and build pipelines for the user.
 
         Args:
-            pipeline_names: List of pipeline names to load. If None, loads all user pipelines.
+            pipeline_names: List of pipeline names to load.
         """
-        if not self.username:
-            raise ValueError("Username is required for auto-loading pipelines")
-
-        if not pipeline_names:
-            raise ValueError("No pipeline names provided for auto-loading")
-
         self.logger.info(f"Auto-loading pipelines: {pipeline_names}")
 
         for pipeline_name in pipeline_names:
             try:
                 # Load pipeline graph
                 self.logger.debug(f"Loading pipeline graph: {pipeline_name}")
-                self.load_pipeline_graph([pipeline_name], self.username)
+                self.load_pipeline_graph([pipeline_name])
 
                 # Build Haystack components
                 self.logger.debug(f"Building Haystack components: {pipeline_name}")
@@ -140,7 +125,7 @@ class PipelineRunner:
 
         return pipeline_type
 
-    def load_pipeline_graph(self, pipeline_hashes: List[str], username: str) -> None:
+    def load_pipeline_graph(self, pipeline_hashes: List[str]) -> None:
         """
         Load pipeline metadata from Neo4j and store in _pipeline_graphs.
 
@@ -149,11 +134,10 @@ class PipelineRunner:
 
         Args:
             pipeline_hashes: List of pipeline names to load (e.g., ['retrieval_pipeline'])
-            username: Username for pipeline ownership validation
 
         Raises:
             RuntimeError: If no graph store is configured
-            ValueError: If pipeline not found or invalid username
+            ValueError: If pipeline not found
 
         Updates:
             self._pipeline_graphs: Dict mapping pipeline names to component metadata
@@ -219,7 +203,7 @@ class PipelineRunner:
         graph_storage = GraphStorage(self.graph_store, registry)
 
         pipelines_data = graph_storage.load_pipeline_by_hashes(
-            pipeline_hashes, username
+            pipeline_hashes, self.username
         )
 
         # Store the graph representations for all loaded pipelines
@@ -345,7 +329,7 @@ class PipelineRunner:
                 haystack_component = create_haystack_component(configured_spec)
 
                 # Optionally wrap with GatedComponent for caching
-                if self.enable_caching and self.graph_store and self.username:
+                if self.enable_caching:
                     # Skip wrapping document stores and writers (they're already persistent)
                     skip_wrapping = (
                         "writer" in comp_name.lower() or "store" in comp_name.lower()
@@ -740,23 +724,22 @@ class PipelineRunner:
             success = True
 
             # Log metrics
-            if self.metrics:
-                end_time = time.time()
-                component_count = len(
-                    self._haystack_components_by_pipeline.get(pipeline_name, {})
-                )
-                self.metrics.log_pipeline_execution(
-                    pipeline_name=pipeline_name,
-                    start_time=start_time,
-                    end_time=end_time,
-                    total_components=component_count,
-                    success=success,
-                    metadata={
-                        "type": "indexing",
-                        "files_processed": len(input_files),
-                        "data_path": str(data_path_obj),
-                    },
-                )
+            end_time = time.time()
+            component_count = len(
+                self._haystack_components_by_pipeline.get(pipeline_name, {})
+            )
+            self.metrics.log_pipeline_execution(
+                pipeline_name=pipeline_name,
+                start_time=start_time,
+                end_time=end_time,
+                total_components=component_count,
+                success=success,
+                metadata={
+                    "type": "indexing",
+                    "files_processed": len(input_files),
+                    "data_path": str(data_path_obj),
+                },
+            )
 
             return result
 
@@ -765,20 +748,19 @@ class PipelineRunner:
             success = False
 
             # Log failed metrics
-            if self.metrics:
-                end_time = time.time()
-                component_count = len(
-                    self._haystack_components_by_pipeline.get(pipeline_name, {})
-                )
-                self.metrics.log_pipeline_execution(
-                    pipeline_name=pipeline_name,
-                    start_time=start_time,
-                    end_time=end_time,
-                    total_components=component_count,
-                    success=success,
-                    error=error_msg,
-                    metadata={"type": "indexing"},
-                )
+            end_time = time.time()
+            component_count = len(
+                self._haystack_components_by_pipeline.get(pipeline_name, {})
+            )
+            self.metrics.log_pipeline_execution(
+                pipeline_name=pipeline_name,
+                start_time=start_time,
+                end_time=end_time,
+                total_components=component_count,
+                success=success,
+                error=error_msg,
+                metadata={"type": "indexing"},
+            )
 
             raise
 

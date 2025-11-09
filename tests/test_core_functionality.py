@@ -32,13 +32,21 @@ class TestCoreFunctionality:
 
     def test_factory_creation(self) -> None:
         """Test that factory can be created."""
-        factory = PipelineFactory()
+        from unittest.mock import MagicMock
+        from agentic_rag.components import GraphStore
+
+        mock_graph_store = MagicMock(spec=GraphStore)
+        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
         assert factory is not None
         assert factory.registry is not None
 
     def test_component_parsing(self) -> None:
         """Test parsing component specifications."""
-        factory = PipelineFactory()
+        from unittest.mock import MagicMock
+        from agentic_rag.components import GraphStore
+
+        mock_graph_store = MagicMock(spec=GraphStore)
+        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
 
         # Test valid parsing
         test_cases = [
@@ -56,7 +64,11 @@ class TestCoreFunctionality:
 
     def test_component_lookup(self) -> None:
         """Test looking up component specifications."""
-        factory = PipelineFactory()
+        from unittest.mock import MagicMock
+        from agentic_rag.components import GraphStore
+
+        mock_graph_store = MagicMock(spec=GraphStore)
+        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
 
         # Test valid lookups
         test_components = [
@@ -77,7 +89,11 @@ class TestCoreFunctionality:
 
     def test_invalid_specifications(self) -> None:
         """Test error handling for invalid specifications."""
-        factory = PipelineFactory()
+        from unittest.mock import MagicMock
+        from agentic_rag.components import GraphStore
+
+        mock_graph_store = MagicMock(spec=GraphStore)
+        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
 
         # Test invalid category
         with pytest.raises(ValueError, match="Invalid component specification"):
@@ -99,7 +115,11 @@ class TestCoreFunctionality:
 
     def test_pipeline_spec_creation_without_building(self) -> None:
         """Test creating pipeline specs without building Haystack pipelines."""
-        factory = PipelineFactory()
+        from unittest.mock import MagicMock
+        from agentic_rag.components import GraphStore
+
+        mock_graph_store = MagicMock(spec=GraphStore)
+        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
 
         # Test parsing multiple components
         component_specs = [
@@ -124,8 +144,11 @@ class TestCoreFunctionality:
 
     def test_config_merging_logic(self) -> None:
         """Test configuration merging without building components."""
+        from unittest.mock import MagicMock
+        from agentic_rag.components import GraphStore
 
-        factory = PipelineFactory()
+        mock_graph_store = MagicMock(spec=GraphStore)
+        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
         spec = factory.registry.get_component_spec("embedder")
 
         # Test config merging

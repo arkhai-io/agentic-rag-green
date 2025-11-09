@@ -35,7 +35,6 @@ class PipelineFactory:
         pipeline_specs: List[List[Dict[str, str]]],
         configs: Optional[List[Dict[str, Any]]] = None,
         pipeline_types: Optional[List[str]] = None,
-        username: Optional[str] = None,
     ) -> List[PipelineSpec]:
         """
         Build multiple pipeline graphs from dict-based specifications.
@@ -46,7 +45,6 @@ class PipelineFactory:
             configs: Optional list of configuration dicts for each pipeline
             pipeline_types: Optional list of pipeline types ("indexing" or "retrieval")
                 Defaults to "indexing" for all pipelines
-            username: Username for pipeline ownership (defaults to factory's username)
 
         Returns:
             List of PipelineSpec objects with graph representations built
@@ -65,11 +63,8 @@ class PipelineFactory:
                 "Number of pipeline_types must match number of pipeline specs"
             )
 
-        # Use provided username or fall back to factory's username
-        effective_username = username or self.username
-
         self.logger.info(
-            f"Building {len(pipeline_specs)} pipeline graphs for user: {effective_username}"
+            f"Building {len(pipeline_specs)} pipeline graphs for user: {self.username}"
         )
 
         pipeline_specs_list = []
@@ -86,7 +81,7 @@ class PipelineFactory:
             pipeline_name = config.get("_pipeline_name", f"pipeline_{i}")
             self.logger.debug(f"Building {pipeline_type} pipeline {i}: {pipeline_name}")
             pipeline_spec = self.build_pipeline_graph(
-                spec, pipeline_name, config, pipeline_type, effective_username
+                spec, pipeline_name, config, pipeline_type
             )
             pipeline_specs_list.append(pipeline_spec)
 
@@ -99,7 +94,6 @@ class PipelineFactory:
         pipeline_name: str,
         config: Optional[Dict[str, Any]] = None,
         pipeline_type: str = "indexing",
-        username: Optional[str] = None,
     ) -> PipelineSpec:
         """
         Build a single pipeline graph from dict-based component specifications.
@@ -110,24 +104,20 @@ class PipelineFactory:
             pipeline_name: Name for the pipeline
             config: Optional configuration dict
             pipeline_type: Type of pipeline - "indexing" or "retrieval" (default: "indexing")
-            username: Username for pipeline ownership (defaults to factory's username)
 
         Returns:
             PipelineSpec with graph representation built
         """
         config = config or {}
 
-        # Use provided username or fall back to factory's username
-        effective_username = username or self.username
-
         # Route to appropriate builder based on pipeline type
         if pipeline_type == "indexing":
             return self._build_indexing_pipeline(
-                component_specs, pipeline_name, config, effective_username
+                component_specs, pipeline_name, config
             )
         elif pipeline_type == "retrieval":
             return self._build_retrieval_pipeline(
-                component_specs, pipeline_name, config, effective_username
+                component_specs, pipeline_name, config
             )
         else:
             raise ValueError(
@@ -139,7 +129,6 @@ class PipelineFactory:
         component_specs: List[Dict[str, str]],
         pipeline_name: str,
         config: Dict[str, Any],
-        username: str,
         branch_id: Optional[str] = None,
         pipeline_type: Optional[PipelineType] = None,
     ) -> PipelineSpec:
@@ -150,7 +139,6 @@ class PipelineFactory:
             component_specs: List of component specifications
             pipeline_name: Name for the pipeline
             config: Configuration dict
-            username: Username for pipeline ownership
             branch_id: Optional branch identifier for retrieval pipeline branches
 
         Returns:
@@ -176,7 +164,7 @@ class PipelineFactory:
                 and "root_dir" not in user_config
             ):
                 user_config = user_config.copy()  # Don't modify original config
-                user_config["root_dir"] = f"./data/{username}/{pipeline_name}"
+                user_config["root_dir"] = f"./data/{self.username}/{pipeline_name}"
                 self.logger.debug(
                     f"Auto-generated root_dir for chroma_document_writer: {user_config['root_dir']}"
                 )
@@ -200,7 +188,7 @@ class PipelineFactory:
             self.logger.info(
                 f"Creating graph representation for indexing pipeline '{pipeline_name}'"
             )
-            self.graph_storage.build_pipeline_graph(pipeline_spec, username, branch_id)
+            self.graph_storage.build_pipeline_graph(pipeline_spec, self.username, branch_id)
         else:
             self.logger.warning("No graph store configured, pipeline graph not created")
 
@@ -228,7 +216,7 @@ class PipelineFactory:
         return indexing_pipelines
 
     def _fetch_indexing_pipeline_components(
-        self, indexing_pipelines: List[str], username: str
+        self, indexing_pipelines: List[str]
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Step 2: Fetch embedder and writer components from each indexing pipeline.
@@ -245,12 +233,12 @@ class PipelineFactory:
 
             # Get all components for this pipeline
             all_components = self.graph_store.get_components_by_pipeline(
-                pipeline_name=indexing_pipeline_name, username=username
+                pipeline_name=indexing_pipeline_name, username=self.username
             )
 
             if not all_components:
                 raise ValueError(
-                    f"No components found for '{indexing_pipeline_name}' (user: {username})"
+                    f"No components found for '{indexing_pipeline_name}' (user: {self.username})"
                 )
 
             # Filter for embedder and writer components (needed for retrieval)
@@ -411,7 +399,6 @@ class PipelineFactory:
         component_specs: List[Dict[str, str]],
         pipeline_name: str,
         config: Dict[str, Any],
-        username: str,
     ) -> PipelineSpec:
         """
         Build a retrieval pipeline.
@@ -424,7 +411,6 @@ class PipelineFactory:
             component_specs: List of component specifications (e.g., generator)
             pipeline_name: Name for the pipeline
             config: Configuration dict with optional "_indexing_pipelines" key
-            username: Username for pipeline ownership
 
         Returns:
             PipelineSpec for retrieval pipeline
@@ -442,7 +428,7 @@ class PipelineFactory:
 
         # Step 2: Fetch embedder and writer components
         indexing_pipeline_components = self._fetch_indexing_pipeline_components(
-            indexing_pipelines, username
+            indexing_pipelines
         )
 
         # Step 3: Build component specs for each pipeline
@@ -469,7 +455,6 @@ class PipelineFactory:
                 component_specs=pipeline_spec,
                 pipeline_name=pipeline_name,
                 config=pipeline_config,
-                username=username,
                 branch_id=indexing_pipeline_name,
                 pipeline_type=PipelineType.RETRIEVAL,
             )
