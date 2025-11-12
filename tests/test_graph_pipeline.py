@@ -36,18 +36,24 @@ class TestGraphPipelineArchitecture:
 
     def setup_method(self):
         """Set up test fixtures."""
+        from agentic_rag.pipeline.storage import GraphStorage
+
         self.registry = get_default_registry()
         # Reset singleton instances before each test
         PipelineFactory.reset_instance()
         PipelineRunner.reset_instance()
         GraphStore.reset_instance()
+        GraphStorage.reset_instance()
 
     def teardown_method(self):
         """Clean up after each test."""
+        from agentic_rag.pipeline.storage import GraphStorage
+
         # Reset singleton instances after each test
         PipelineFactory.reset_instance()
         PipelineRunner.reset_instance()
         GraphStore.reset_instance()
+        GraphStorage.reset_instance()
 
     def test_factory_builds_pipeline_graph(self, mock_graph_store, test_config):
         """Test that factory builds and stores pipeline graph in Neo4j."""

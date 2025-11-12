@@ -13,20 +13,24 @@ class TestCoreFunctionality:
         # Reset singleton instances before each test
         from agentic_rag.components import GraphStore
         from agentic_rag.pipeline import PipelineFactory, PipelineRunner
+        from agentic_rag.pipeline.storage import GraphStorage
 
         PipelineFactory.reset_instance()
         PipelineRunner.reset_instance()
         GraphStore.reset_instance()
+        GraphStorage.reset_instance()
 
     def teardown_method(self):
         """Clean up after each test."""
         # Reset singleton instances after each test
         from agentic_rag.components import GraphStore
         from agentic_rag.pipeline import PipelineFactory, PipelineRunner
+        from agentic_rag.pipeline.storage import GraphStorage
 
         PipelineFactory.reset_instance()
         PipelineRunner.reset_instance()
         GraphStore.reset_instance()
+        GraphStorage.reset_instance()
 
     def test_available_components(self) -> None:
         """Test that component listing works."""

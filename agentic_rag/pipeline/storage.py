@@ -18,12 +18,43 @@ from ..utils.logger import get_system_logger
 
 
 class GraphStorage:
-    """Stores and manages graph representations of pipeline components and their relationships."""
+    """Stores and manages graph representations of pipeline components and their relationships (Singleton)."""
+
+    _instance: Optional["GraphStorage"] = None
+    _initialized: bool = False
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> "GraphStorage":
+        """Ensure only one instance of GraphStorage exists."""
+        if cls._instance is None:
+            cls._instance = super(GraphStorage, cls).__new__(cls)
+        return cls._instance
 
     def __init__(self, graph_store: GraphStore, registry: ComponentRegistry) -> None:
+        """
+        Initialize GraphStorage (singleton).
+
+        Args:
+            graph_store: GraphStore instance for Neo4j operations
+            registry: ComponentRegistry for component specifications
+
+        Note:
+            This is a singleton class. Only the first initialization will be used.
+            Subsequent calls will return the existing instance.
+        """
+        # Only initialize once
+        if self._initialized:
+            return
+
         self.graph_store = graph_store
         self.registry = registry
         self.logger = get_system_logger(__name__)
+        self._initialized = True
+
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Reset singleton instance (useful for testing)."""
+        cls._instance = None
+        cls._initialized = False
 
     def create_pipeline_graph(
         self,
