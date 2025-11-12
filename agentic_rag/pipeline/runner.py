@@ -16,27 +16,39 @@ from ..utils.metrics import MetricsCollector
 
 
 class PipelineRunner:
-    """Executes pipelines with input data."""
+    """Executes pipelines with input data (Singleton)."""
+
+    _instance: Optional["PipelineRunner"] = None
+    _initialized: bool = False
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> "PipelineRunner":
+        """Ensure only one instance of PipelineRunner exists."""
+        if cls._instance is None:
+            cls._instance = super(PipelineRunner, cls).__new__(cls)
+        return cls._instance
 
     def __init__(
         self,
-        username: str,
-        pipeline_names: List[str],
         graph_store: Optional[GraphStore] = None,
         enable_caching: bool = False,
         config: Optional[Config] = None,
     ) -> None:
         """
-        Initialize the pipeline runner.
+        Initialize the pipeline runner (singleton).
 
         Args:
-            username: Username to load pipelines for
-            pipeline_names: List of pipeline names to load (e.g., ['pdf_indexing_pipeline'])
             graph_store: GraphStore for loading pipelines from Neo4j (created from config if not provided)
             enable_caching: If True, wraps components with GatedComponent for caching
             config: Configuration object with API keys and credentials for components
+
+        Note:
+            This is a singleton class. Only the first initialization will be used.
+            Username and pipeline names are now injected at method level.
         """
-        self.username = username
+        # Only initialize once
+        if self._initialized:
+            return
+
         self.enable_caching = enable_caching
         self.config = get_config(
             config
@@ -48,11 +60,10 @@ class PipelineRunner:
         else:
             self.graph_store = graph_store
 
-        self.logger = get_logger(__name__, username=username)
-        self.metrics = MetricsCollector(username=username)
+        self.logger = get_logger(__name__, config=self.config)
 
-        # Configure Haystack logging to use same log files
-        configure_haystack_logging(username=username, level="DEBUG")
+        # Configure Haystack logging
+        configure_haystack_logging(level="DEBUG")
 
         # Graph representations from Neo4j for multiple pipelines
         self._pipeline_graphs: Dict[str, List[Dict[str, Any]]] = {}
@@ -61,28 +72,34 @@ class PipelineRunner:
         # Actual Haystack Pipeline objects (connected and ready to run)
         self._haystack_pipelines: Dict[str, Any] = {}
 
-        # Auto-load and build pipelines
-        self.logger.info(f"Initializing PipelineRunner for user: {username}")
-        self._auto_load_pipelines(pipeline_names)
+        self._initialized = True
+        self.logger.info("PipelineRunner initialized (singleton)")
 
-    def _auto_load_pipelines(self, pipeline_names: List[str]) -> None:
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Reset singleton instance (useful for testing)."""
+        cls._instance = None
+        cls._initialized = False
+
+    def load_pipelines(self, pipeline_names: List[str], username: str) -> None:
         """
-        Automatically load and build pipelines for the user.
+        Load and build pipelines for a specific user.
 
         Args:
             pipeline_names: List of pipeline names to load.
+            username: Username to load pipelines for
         """
-        self.logger.info(f"Auto-loading pipelines: {pipeline_names}")
+        self.logger.info(f"Loading pipelines for user {username}: {pipeline_names}")
 
         for pipeline_name in pipeline_names:
             try:
                 # Load pipeline graph
                 self.logger.debug(f"Loading pipeline graph: {pipeline_name}")
-                self.load_pipeline_graph([pipeline_name])
+                self.load_pipeline_graph([pipeline_name], username)
 
                 # Build Haystack components
                 self.logger.debug(f"Building Haystack components: {pipeline_name}")
-                self.build_haystack_components_from_graph(pipeline_name)
+                self.build_haystack_components_from_graph(pipeline_name, username)
 
                 # Get pipeline type from Neo4j (stored in component nodes)
                 pipeline_type = self._get_pipeline_type(pipeline_name)
@@ -92,7 +109,7 @@ class PipelineRunner:
                     f"Creating connected {pipeline_type} pipeline: {pipeline_name}"
                 )
                 self.create_haystack_pipeline(
-                    pipeline_name, pipeline_type=pipeline_type
+                    pipeline_name, username, pipeline_type=pipeline_type
                 )
 
                 self.logger.info(f"Successfully loaded pipeline: {pipeline_name}")
@@ -137,7 +154,7 @@ class PipelineRunner:
 
         return pipeline_type
 
-    def load_pipeline_graph(self, pipeline_hashes: List[str]) -> None:
+    def load_pipeline_graph(self, pipeline_hashes: List[str], username: str) -> None:
         """
         Load pipeline metadata from Neo4j and store in _pipeline_graphs.
 
@@ -215,13 +232,15 @@ class PipelineRunner:
         graph_storage = GraphStorage(self.graph_store, registry)
 
         pipelines_data = graph_storage.load_pipeline_by_hashes(
-            pipeline_hashes, self.username
+            pipeline_hashes, username
         )
 
         # Store the graph representations for all loaded pipelines
         self._pipeline_graphs.update(pipelines_data)
 
-    def build_haystack_components_from_graph(self, pipeline_name: str) -> None:
+    def build_haystack_components_from_graph(
+        self, pipeline_name: str, username: str
+    ) -> None:
         """
         Instantiate Haystack component objects from metadata and store in _haystack_components_by_pipeline.
 
@@ -375,7 +394,7 @@ class PipelineRunner:
                             component_id=comp_id,
                             component_name=comp_name,
                             graph_store=self.graph_store,
-                            username=self.username,
+                            username=username,
                             cache_key=cache_key,  # Use pipeline-agnostic cache key
                             retrieve_from_ipfs=True,
                         )
@@ -399,7 +418,7 @@ class PipelineRunner:
         self._haystack_components_by_pipeline[pipeline_name] = haystack_components
 
     def create_haystack_pipeline(
-        self, pipeline_name: str, pipeline_type: str = "indexing"
+        self, pipeline_name: str, username: str, pipeline_type: str = "indexing"
     ) -> Any:
         """
         Create Haystack Pipeline(s) by routing to appropriate builder.
@@ -415,15 +434,17 @@ class PipelineRunner:
             RuntimeError: If components haven't been built yet
         """
         if pipeline_type == "indexing":
-            return self.create_haystack_pipeline_indexing(pipeline_name)
+            return self.create_haystack_pipeline_indexing(pipeline_name, username)
         elif pipeline_type == "retrieval":
-            return self.create_haystack_pipeline_retrieval(pipeline_name)
+            return self.create_haystack_pipeline_retrieval(pipeline_name, username)
         else:
             raise ValueError(
                 f"Invalid pipeline_type: {pipeline_type}. Must be 'indexing' or 'retrieval'"
             )
 
-    def create_haystack_pipeline_indexing(self, pipeline_name: str) -> Any:
+    def create_haystack_pipeline_indexing(
+        self, pipeline_name: str, username: str
+    ) -> Any:
         """
         Create an indexing Haystack Pipeline from components by connecting them sequentially.
 
@@ -505,7 +526,9 @@ class PipelineRunner:
 
         return pipeline
 
-    def create_haystack_pipeline_retrieval(self, pipeline_name: str) -> Dict[str, Any]:
+    def create_haystack_pipeline_retrieval(
+        self, pipeline_name: str, username: str
+    ) -> Dict[str, Any]:
         """
         Create multiple connected Haystack Pipelines from components, one per branch.
 
@@ -668,12 +691,13 @@ class PipelineRunner:
 
         return branch_pipelines
 
-    def run(self, pipeline_name: str, type: str, **kwargs: Any) -> Any:
+    def run(self, pipeline_name: str, username: str, type: str, **kwargs: Any) -> Any:
         """
         Run a pipeline by name, dispatching to the appropriate execution method.
 
         Args:
             pipeline_name: Name of the pipeline to run (e.g., 'pdf_indexing_pipeline', 'pdf_retrieval_pipeline')
+            username: Username for metrics and logging
             type: Pipeline type - "indexing" or "retrieval"
             **kwargs: Pipeline-specific arguments
 
@@ -681,20 +705,23 @@ class PipelineRunner:
             Pipeline execution results
         """
         if type == "indexing" or type == PipelineUsage.INDEXING.value:
-            return self._run_indexing_pipeline(pipeline_name, **kwargs)
+            return self._run_indexing_pipeline(pipeline_name, username, **kwargs)
         elif type == "retrieval" or type == PipelineUsage.RETRIEVAL.value:
-            return self._run_retrieval_pipeline(pipeline_name, **kwargs)
+            return self._run_retrieval_pipeline(pipeline_name, username, **kwargs)
         else:
             raise ValueError(
                 f"Unknown pipeline type: {type}. " "Must be 'indexing' or 'retrieval'"
             )
 
-    def _run_indexing_pipeline(self, pipeline_name: str, **kwargs: Any) -> Any:
+    def _run_indexing_pipeline(
+        self, pipeline_name: str, username: str, **kwargs: Any
+    ) -> Any:
         """
         Execute an indexing pipeline.
 
         Args:
             pipeline_name: Name of the indexing pipeline
+            username: Username for metrics and logging
             **kwargs: Pipeline-specific arguments
                 - data_path: Path to directory containing PDFs (required)
                 - sources: Optional list of specific file paths to process
@@ -703,6 +730,9 @@ class PipelineRunner:
             Indexing results
         """
         from pathlib import Path
+
+        # Create metrics collector for this user
+        metrics = MetricsCollector(username=username)
 
         start_time = time.time()
         success = False
@@ -759,7 +789,7 @@ class PipelineRunner:
             component_count = len(
                 self._haystack_components_by_pipeline.get(pipeline_name, {})
             )
-            self.metrics.log_pipeline_execution(
+            metrics.log_pipeline_execution(
                 pipeline_name=pipeline_name,
                 start_time=start_time,
                 end_time=end_time,
@@ -783,7 +813,7 @@ class PipelineRunner:
             component_count = len(
                 self._haystack_components_by_pipeline.get(pipeline_name, {})
             )
-            self.metrics.log_pipeline_execution(
+            metrics.log_pipeline_execution(
                 pipeline_name=pipeline_name,
                 start_time=start_time,
                 end_time=end_time,
@@ -796,13 +826,14 @@ class PipelineRunner:
             raise
 
     def _run_retrieval_pipeline(
-        self, pipeline_name: str, **kwargs: Any
+        self, pipeline_name: str, username: str, **kwargs: Any
     ) -> Dict[str, Any]:
         """
         Execute all branches of a retrieval pipeline and aggregate results.
 
         Args:
             pipeline_name: Name of the retrieval pipeline
+            username: Username for metrics and logging
             **kwargs: Must include 'query' (str)
 
         Returns:

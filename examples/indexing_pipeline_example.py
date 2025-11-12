@@ -63,9 +63,9 @@ def create_indexing_pipelines() -> List:
     Returns:
         List[PipelineSpec]: List of created pipeline specifications
     """
-    # Initialize pipeline factory with config
+    # Initialize pipeline factory with config (singleton)
     # GraphStore will be created automatically from config
-    factory = PipelineFactory(config=config, username=USERNAME)
+    factory = PipelineFactory(config=config)
 
     # Define component specs for both pipelines
     # Both pipelines use the same component types but different configurations
@@ -115,8 +115,10 @@ def create_indexing_pipelines() -> List:
 
     # Build both pipelines and store them in Neo4j
     # Each pipeline gets its own ChromaDB collection automatically
+    # Username is now injected at method level for multi-tenant isolation
     pipelines = factory.build_pipeline_graphs_from_specs(
         pipeline_specs=pipeline_specs,
+        username=USERNAME,
         configs=configs,
         pipeline_types=["indexing", "indexing"],
     )
@@ -145,23 +147,29 @@ def run_indexing_pipelines(data_directory: str) -> Dict[str, Any]:
     Returns:
         dict: Results from both pipelines
     """
-    # Initialize GraphStore with config
+    # Initialize GraphStore with config (singleton)
     graph_store = GraphStore(config=config)
 
-    # Initialize runner with both indexing pipelines
+    # Initialize runner (singleton - no username needed at init)
     runner = PipelineRunner(
         graph_store=graph_store,
-        username=USERNAME,
-        pipeline_names=[FAST_PIPELINE, SEMANTIC_PIPELINE],
         enable_caching=False,
+        config=config,
+    )
+
+    # Load pipelines with username injection
+    runner.load_pipelines(
+        pipeline_names=[FAST_PIPELINE, SEMANTIC_PIPELINE], username=USERNAME
     )
 
     results = {}
 
     # Run each indexing pipeline on the directory
+    # Username is now injected at method level
     for pipeline_name in [FAST_PIPELINE, SEMANTIC_PIPELINE]:
         result = runner.run(
             pipeline_name=pipeline_name,
+            username=USERNAME,
             type="indexing",
             data_path=data_directory,
         )

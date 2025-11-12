@@ -14,6 +14,17 @@ load_dotenv()
 
 
 class GraphStore:
+    """Singleton GraphStore for Neo4j connection management."""
+
+    _instance: Optional["GraphStore"] = None
+    _initialized: bool = False
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> "GraphStore":
+        """Ensure only one instance of GraphStore exists."""
+        if cls._instance is None:
+            cls._instance = super(GraphStore, cls).__new__(cls)
+        return cls._instance
+
     def __init__(
         self,
         uri: Optional[str] = None,
@@ -23,7 +34,7 @@ class GraphStore:
         config: Optional["Config"] = None,
     ) -> None:
         """
-        Initialize GraphStore with Neo4j connection.
+        Initialize GraphStore with Neo4j connection (singleton).
 
         Args:
             uri: Neo4j URI (overrides config)
@@ -31,28 +42,36 @@ class GraphStore:
             password: Neo4j password (overrides config)
             database: Neo4j database name (overrides config)
             config: Config object with credentials (required if params not provided)
+
+        Note:
+            This is a singleton class. Only the first initialization will be used.
+            Subsequent calls will return the existing instance.
         """
+        # Only initialize once
+        if self._initialized:
+            return
+
         # Priority: explicit params > config object
         if config is not None:
             self.uri = uri or config.neo4j_uri
-            self.username = username or config.neo4j_username
+            self.neo4j_username = username or config.neo4j_username
             self.password = password or config.neo4j_password
             self.database = database or config.neo4j_database
         else:
             # Use provided explicit values
             self.uri = uri
-            self.username = username
+            self.neo4j_username = username
             self.password = password
             self.database = database
 
-        if not all([self.uri, self.username, self.password]):
+        if not all([self.uri, self.neo4j_username, self.password]):
             raise ValueError(
                 "Neo4j credentials required. Provide via config parameter:\n"
                 "  config = Config(neo4j_uri='...', neo4j_username='...', neo4j_password='...')\n"
                 "  GraphStore(config=config)"
             )
 
-        print(f"GraphStore connecting to: {self.uri} with user: {self.username}")
+        print(f"GraphStore connecting to: {self.uri} with user: {self.neo4j_username}")
         if self.database:
             print(f"Using database: {self.database}")
 
@@ -61,7 +80,7 @@ class GraphStore:
 
         self.driver = GraphDatabase.driver(
             self.uri,
-            auth=(self.username, self.password),
+            auth=(self.neo4j_username, self.password),
             ssl_context=ssl_ctx,
             connection_timeout=10,
             max_transaction_retry_time=5,
@@ -71,9 +90,19 @@ class GraphStore:
         try:
             self.driver.verify_connectivity()
             print("GraphStore connected successfully!")
+            self._initialized = True
         except Exception as e:
             print(f"GraphStore connection failed: {e}")
             raise
+
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Reset singleton instance (useful for testing)."""
+        if cls._instance is not None:
+            if hasattr(cls._instance, "driver"):
+                cls._instance.driver.close()
+        cls._instance = None
+        cls._initialized = False
 
     def close(self) -> None:
         self.driver.close()

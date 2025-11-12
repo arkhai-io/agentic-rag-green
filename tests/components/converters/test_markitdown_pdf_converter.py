@@ -427,9 +427,7 @@ class TestMarkItDownPDFToDocument:
             from agentic_rag.components import GraphStore
 
             mock_graph_store = MagicMock(spec=GraphStore)
-            factory = PipelineFactory(
-                graph_store=mock_graph_store, username="test_user"
-            )
+            factory = PipelineFactory(graph_store=mock_graph_store)
             pipeline_spec = [
                 {"type": "CONVERTER.MARKITDOWN_PDF"},
                 {"type": "CHUNKER.MARKDOWN_AWARE"},
@@ -441,8 +439,9 @@ class TestMarkItDownPDFToDocument:
             }
 
             # Build the pipeline graph (this validates the components work together)
+            # Username now injected at method level
             spec = factory.build_pipeline_graph(
-                pipeline_spec, "markitdown_test", config
+                pipeline_spec, "markitdown_test", username="test_user", config=config
             )
 
             assert spec is not None
@@ -478,14 +477,15 @@ class TestMarkItDownPDFToDocument:
             from agentic_rag.components import GraphStore
 
             mock_graph_store = MagicMock(spec=GraphStore)
-            factory = PipelineFactory(
-                graph_store=mock_graph_store, username="test_user"
-            )
+            factory = PipelineFactory(graph_store=mock_graph_store)
 
             # Create pipeline with MarkItDown converter
             pipeline_spec = [{"type": "CONVERTER.MARKITDOWN_PDF"}]
 
-            spec = factory.build_pipeline_graph(pipeline_spec, "markitdown_error_test")
+            # Username now injected at method level
+            spec = factory.build_pipeline_graph(
+                pipeline_spec, "markitdown_error_test", username="test_user"
+            )
 
             assert spec.name == "markitdown_error_test"
             assert len(spec.components) == 1

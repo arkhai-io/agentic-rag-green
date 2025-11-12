@@ -8,6 +8,26 @@ from agentic_rag import PipelineFactory, list_available_components
 class TestCoreFunctionality:
     """Test core system functionality."""
 
+    def setup_method(self):
+        """Set up test fixtures."""
+        # Reset singleton instances before each test
+        from agentic_rag.components import GraphStore
+        from agentic_rag.pipeline import PipelineFactory, PipelineRunner
+
+        PipelineFactory.reset_instance()
+        PipelineRunner.reset_instance()
+        GraphStore.reset_instance()
+
+    def teardown_method(self):
+        """Clean up after each test."""
+        # Reset singleton instances after each test
+        from agentic_rag.components import GraphStore
+        from agentic_rag.pipeline import PipelineFactory, PipelineRunner
+
+        PipelineFactory.reset_instance()
+        PipelineRunner.reset_instance()
+        GraphStore.reset_instance()
+
     def test_available_components(self) -> None:
         """Test that component listing works."""
         available = list_available_components()
@@ -37,9 +57,7 @@ class TestCoreFunctionality:
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
-        factory = PipelineFactory(
-            graph_store=mock_graph_store, username="test_user", config=test_config
-        )
+        factory = PipelineFactory(graph_store=mock_graph_store, config=test_config)
         assert factory is not None
         assert factory.registry is not None
 
@@ -50,9 +68,7 @@ class TestCoreFunctionality:
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
-        factory = PipelineFactory(
-            graph_store=mock_graph_store, username="test_user", config=test_config
-        )
+        factory = PipelineFactory(graph_store=mock_graph_store, config=test_config)
 
         # Test valid parsing
         test_cases = [
@@ -75,9 +91,7 @@ class TestCoreFunctionality:
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
-        factory = PipelineFactory(
-            graph_store=mock_graph_store, username="test_user", config=test_config
-        )
+        factory = PipelineFactory(graph_store=mock_graph_store, config=test_config)
 
         # Test valid lookups
         test_components = [
@@ -103,9 +117,7 @@ class TestCoreFunctionality:
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
-        factory = PipelineFactory(
-            graph_store=mock_graph_store, username="test_user", config=test_config
-        )
+        factory = PipelineFactory(graph_store=mock_graph_store, config=test_config)
 
         # Test invalid category
         with pytest.raises(ValueError, match="Invalid component specification"):
@@ -132,9 +144,7 @@ class TestCoreFunctionality:
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
-        factory = PipelineFactory(
-            graph_store=mock_graph_store, username="test_user", config=test_config
-        )
+        factory = PipelineFactory(graph_store=mock_graph_store, config=test_config)
 
         # Test parsing multiple components
         component_specs = [
@@ -164,9 +174,7 @@ class TestCoreFunctionality:
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
-        factory = PipelineFactory(
-            graph_store=mock_graph_store, username="test_user", config=test_config
-        )
+        factory = PipelineFactory(graph_store=mock_graph_store, config=test_config)
         spec = factory.registry.get_component_spec("embedder")
 
         # Test config merging

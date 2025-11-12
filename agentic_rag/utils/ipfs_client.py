@@ -4,7 +4,7 @@ import io
 import json
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
-import requests  # type: ignore
+import requests  # type: ignore[import-untyped]
 from dotenv import load_dotenv
 
 if TYPE_CHECKING:

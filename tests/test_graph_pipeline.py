@@ -37,20 +37,31 @@ class TestGraphPipelineArchitecture:
     def setup_method(self):
         """Set up test fixtures."""
         self.registry = get_default_registry()
+        # Reset singleton instances before each test
+        PipelineFactory.reset_instance()
+        PipelineRunner.reset_instance()
+        GraphStore.reset_instance()
+
+    def teardown_method(self):
+        """Clean up after each test."""
+        # Reset singleton instances after each test
+        PipelineFactory.reset_instance()
+        PipelineRunner.reset_instance()
+        GraphStore.reset_instance()
 
     def test_factory_builds_pipeline_graph(self, mock_graph_store, test_config):
         """Test that factory builds and stores pipeline graph in Neo4j."""
-        factory = PipelineFactory(
-            graph_store=mock_graph_store, username="test_user", config=test_config
-        )
+        factory = PipelineFactory(graph_store=mock_graph_store, config=test_config)
 
         pipeline_spec = [
             {"type": "CONVERTER.PDF"},
             {"type": "CHUNKER.DOCUMENT_SPLITTER"},
         ]
 
-        # Build pipeline graph (stores in Neo4j)
-        spec = factory.build_pipeline_graph(pipeline_spec, "test_pipeline", config={})
+        # Build pipeline graph (stores in Neo4j) - username now injected at method level
+        spec = factory.build_pipeline_graph(
+            pipeline_spec, "test_pipeline", username="test_user", config={}
+        )
 
         assert spec is not None
         assert spec.name == "test_pipeline"
@@ -60,9 +71,7 @@ class TestGraphPipelineArchitecture:
 
     def test_runner_loads_pipeline_graph(self, mock_graph_store, test_config):
         """Test that runner can load pipeline graph from Neo4j."""
-        factory = PipelineFactory(
-            graph_store=mock_graph_store, username="test_user", config=test_config
-        )
+        factory = PipelineFactory(graph_store=mock_graph_store, config=test_config)
 
         # First, create a pipeline
         pipeline_spec = [
@@ -70,7 +79,10 @@ class TestGraphPipelineArchitecture:
             {"type": "CHUNKER.DOCUMENT_SPLITTER"},
         ]
 
-        factory.build_pipeline_graph(pipeline_spec, "load_test_pipeline", config={})
+        # Username now injected at method level
+        factory.build_pipeline_graph(
+            pipeline_spec, "load_test_pipeline", username="test_user", config={}
+        )
 
         # Mock the load response
         mock_graph_store.validate_user_exists.return_value = True
@@ -97,11 +109,14 @@ class TestGraphPipelineArchitecture:
             },
         ]
 
-        # Now create runner - it will automatically load the pipeline
+        # Now create runner and load pipelines with username injection
         runner = PipelineRunner(
             graph_store=mock_graph_store,
-            username="test_user",
-            pipeline_names=["load_test_pipeline"],
+            config=test_config,
+        )
+
+        runner.load_pipelines(
+            pipeline_names=["load_test_pipeline"], username="test_user"
         )
 
         # Verify graph data was loaded
@@ -110,9 +125,7 @@ class TestGraphPipelineArchitecture:
 
     def test_runner_builds_haystack_components(self, mock_graph_store, test_config):
         """Test that runner builds runtime Haystack components from graph."""
-        factory = PipelineFactory(
-            graph_store=mock_graph_store, username="test_user", config=test_config
-        )
+        factory = PipelineFactory(graph_store=mock_graph_store, config=test_config)
 
         # Create pipeline
         pipeline_spec = [
@@ -120,8 +133,9 @@ class TestGraphPipelineArchitecture:
             {"type": "CHUNKER.DOCUMENT_SPLITTER"},
         ]
 
+        # Username now injected at method level
         factory.build_pipeline_graph(
-            pipeline_spec, "component_test_pipeline", config={}
+            pipeline_spec, "component_test_pipeline", username="test_user", config={}
         )
 
         # Mock the load response
@@ -151,11 +165,14 @@ class TestGraphPipelineArchitecture:
             },
         ]
 
-        # Create runner - it will automatically load and build the pipeline
+        # Create runner and load pipelines with username injection
         runner = PipelineRunner(
             graph_store=mock_graph_store,
-            username="test_user",
-            pipeline_names=["component_test_pipeline"],
+            config=test_config,
+        )
+
+        runner.load_pipelines(
+            pipeline_names=["component_test_pipeline"], username="test_user"
         )
 
         # Verify components were built
@@ -165,17 +182,18 @@ class TestGraphPipelineArchitecture:
         assert len(components) >= 2  # At least the 2 components we added
 
     def test_runner_requires_parameters(self):
-        """Test that runner requires all parameters."""
-        # PipelineRunner now requires graph_store, username, and pipeline_names
-        # This should raise TypeError when called without required parameters
-        with pytest.raises(TypeError):
-            PipelineRunner()
+        """Test that runner can be initialized without parameters (singleton)."""
+        # PipelineRunner is now a singleton and can be initialized without parameters
+        # It will use config defaults
+        runner = PipelineRunner()
+        assert runner is not None
+        # Subsequent calls should return the same instance
+        runner2 = PipelineRunner()
+        assert runner is runner2
 
     def test_pipeline_with_config(self, mock_graph_store, test_config):
         """Test pipeline creation with custom configuration."""
-        factory = PipelineFactory(
-            graph_store=mock_graph_store, username="test_user", config=test_config
-        )
+        factory = PipelineFactory(graph_store=mock_graph_store, config=test_config)
 
         pipeline_spec = [
             {"type": "CHUNKER.DOCUMENT_SPLITTER"},
@@ -188,8 +206,9 @@ class TestGraphPipelineArchitecture:
             }
         }
 
+        # Username now injected at method level
         spec = factory.build_pipeline_graph(
-            pipeline_spec, "config_test_pipeline", config=config
+            pipeline_spec, "config_test_pipeline", username="test_user", config=config
         )
 
         assert spec.components[0].get_config()["chunk_size"] == 500
@@ -209,11 +228,14 @@ class TestGraphPipelineArchitecture:
         mock_graph_store.validate_user_exists.return_value = True
         mock_graph_store.get_pipeline_components_by_hash.return_value = []
 
-        # PipelineRunner will try to load during init and will log a warning
+        # PipelineRunner will try to load pipelines and will log a warning
         runner = PipelineRunner(
             graph_store=mock_graph_store,
-            username="test_user",
-            pipeline_names=["nonexistent_pipeline"],
+            config=test_config,
+        )
+
+        runner.load_pipelines(
+            pipeline_names=["nonexistent_pipeline"], username="test_user"
         )
 
         # Should load empty/missing data for non-existent pipeline

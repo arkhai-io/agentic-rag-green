@@ -49,6 +49,7 @@ class Config:
         lighthouse_api_key: Lighthouse IPFS API key
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         log_file: Optional log file path
+        agentic_root_dir: Root directory for agentic-rag data storage
     """
 
     def __init__(
@@ -61,6 +62,7 @@ class Config:
         lighthouse_api_key: Optional[str] = None,
         log_level: Optional[str] = None,
         log_file: Optional[str] = None,
+        agentic_root_dir: Optional[str] = None,
     ):
         """
         Initialize configuration.
@@ -77,6 +79,7 @@ class Config:
             lighthouse_api_key: Lighthouse IPFS key (defaults to LIGHTHOUSE_API_KEY env var)
             log_level: Log level (defaults to AGENTIC_RAG_LOG_LEVEL env var or INFO)
             log_file: Log file path (defaults to AGENTIC_RAG_LOG_FILE env var)
+            agentic_root_dir: Root directory for agentic-rag data (defaults to AGENTIC_ROOT_DIR env var or ./data)
         """
         # Neo4j configuration
         self.neo4j_uri = neo4j_uri or os.getenv("NEO4J_URI")
@@ -91,6 +94,11 @@ class Config:
         # Logging configuration
         self.log_level = log_level or os.getenv("AGENTIC_RAG_LOG_LEVEL") or "INFO"
         self.log_file = log_file or os.getenv("AGENTIC_RAG_LOG_FILE")
+
+        # Storage configuration
+        self.agentic_root_dir = (
+            agentic_root_dir or os.getenv("AGENTIC_ROOT_DIR") or "./data"
+        )
 
     def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
         """
@@ -154,6 +162,7 @@ class Config:
             "lighthouse_api_key": "***" if self.lighthouse_api_key else None,
             "log_level": self.log_level,
             "log_file": self.log_file,
+            "agentic_root_dir": self.agentic_root_dir,
         }
 
     def __repr__(self) -> str:

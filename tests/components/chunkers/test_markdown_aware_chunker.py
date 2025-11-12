@@ -7,6 +7,26 @@ from agentic_rag.components.chunkers import MarkdownAwareChunker
 class TestCustomComponentsPipeline:
     """Test MarkdownAwareChunker component."""
 
+    def setup_method(self):
+        """Set up test fixtures."""
+        # Reset singleton instances before each test
+        from agentic_rag.components import GraphStore
+        from agentic_rag.pipeline import PipelineFactory, PipelineRunner
+
+        PipelineFactory.reset_instance()
+        PipelineRunner.reset_instance()
+        GraphStore.reset_instance()
+
+    def teardown_method(self):
+        """Clean up after each test."""
+        # Reset singleton instances after each test
+        from agentic_rag.components import GraphStore
+        from agentic_rag.pipeline import PipelineFactory, PipelineRunner
+
+        PipelineFactory.reset_instance()
+        PipelineRunner.reset_instance()
+        GraphStore.reset_instance()
+
     def test_markdown_chunker_available_in_registry(self):
         """Test that MarkdownAwareChunker is registered and available."""
         from unittest.mock import MagicMock
@@ -21,7 +41,7 @@ class TestCustomComponentsPipeline:
 
         # Test component can be retrieved from registry
         mock_graph_store = MagicMock(spec=GraphStore)
-        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
+        factory = PipelineFactory(graph_store=mock_graph_store)
         spec = factory.registry.get_component_spec("markdown_aware_chunker")
 
         assert spec is not None
@@ -70,7 +90,7 @@ Final content section with additional text to make sure we have enough content t
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
-        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
+        factory = PipelineFactory(graph_store=mock_graph_store)
 
         # Parse the enum-style specification
         parsed_name = factory._parse_component_spec({"type": "CHUNKER.MARKDOWN_AWARE"})

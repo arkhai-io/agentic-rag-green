@@ -71,9 +71,9 @@ def create_retrieval_pipeline() -> Any:
     Returns:
         PipelineSpec: The created pipeline specification
     """
-    # Initialize pipeline factory with config
+    # Initialize pipeline factory with config (singleton)
     # GraphStore will be created automatically from config
-    factory = PipelineFactory(config=config, username=USERNAME)
+    factory = PipelineFactory(config=config)
 
     # Define pipeline components
     # INDEX is a placeholder that auto-injects embedder + retriever from indexing pipelines
@@ -145,8 +145,10 @@ def create_retrieval_pipeline() -> Any:
     }
 
     # Build the pipeline and store it in Neo4j
+    # Username is now injected at method level for multi-tenant isolation
     pipeline = factory.build_pipeline_graphs_from_specs(
         pipeline_specs=[pipeline_spec],
+        username=USERNAME,
         configs=[pipeline_config],
         pipeline_types=["retrieval"],
     )
@@ -183,16 +185,18 @@ def run_retrieval_pipeline(
             - documents: Aggregated and ranked documents
             - Evaluation metrics per branch
     """
-    # Initialize runner - automatically loads pipeline from Neo4j
+    # Initialize runner (singleton - no username needed at init)
     # This creates 2 separate branch pipelines (one per indexing pipeline)
     runner = PipelineRunner(
-        username=USERNAME,
-        pipeline_names=[RETRIEVAL_PIPELINE_NAME],
         config=config,  # Config provides Neo4j connection and API keys
         enable_caching=False,
     )
 
+    # Load pipelines with username injection
+    runner.load_pipelines(pipeline_names=[RETRIEVAL_PIPELINE_NAME], username=USERNAME)
+
     # Run the pipeline with the query
+    # Username is now injected at method level
     # Execution flow per branch:
     # 1. Embed the query (using the branch's embedding model)
     # 2. Retrieve top 5 documents from the branch's ChromaDB
@@ -201,6 +205,7 @@ def run_retrieval_pipeline(
     # 5. Evaluate answer quality with multiple metrics
     result = runner.run(
         pipeline_name=RETRIEVAL_PIPELINE_NAME,
+        username=USERNAME,
         type="retrieval",
         query=query,
         ground_truth_answer=ground_truth_answer,  # Optional for grounded evaluation
