@@ -388,7 +388,7 @@ class PipelineRunner:
                     if not skip_wrapping:
                         from ..components.gates import GatedComponent
 
-                        self.logger.info(f"🔒 Wrapping {comp_name} with caching gates")
+                        self.logger.info(f"Wrapping {comp_name} with caching gates")
                         haystack_component = GatedComponent(
                             component=haystack_component,
                             component_id=comp_id,
@@ -683,7 +683,7 @@ class PipelineRunner:
             branch_pipelines[branch_id] = pipeline
             self._haystack_pipelines[branch_key] = pipeline
 
-            self.logger.info(f"✓ Created retrieval pipeline branch: {branch_key}")
+            self.logger.info(f"Created retrieval pipeline branch: {branch_key}")
 
         self.logger.info(
             f"All {len(branch_pipelines)} retrieval pipeline branches created for '{pipeline_name}'"

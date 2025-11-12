@@ -348,7 +348,7 @@ class PipelineFactory:
 
             component_names = [c.get("component_name") for c in relevant_components]
             self.logger.info(
-                f"✓ Retrieved {len(relevant_components)} component(s) for "
+                f"Retrieved {len(relevant_components)} component(s) for "
                 f"'{indexing_pipeline_name}': {component_names}"
             )
 
