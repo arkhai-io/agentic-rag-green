@@ -4,6 +4,8 @@ import os
 
 import pytest
 
+from agentic_rag import Config
+
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_nltk_data():
@@ -18,10 +20,24 @@ def setup_nltk_data():
         print(f"Warning: Could not download NLTK data: {e}")
 
 
+@pytest.fixture
+def test_config():
+    """Create a test Config instance with test credentials."""
+    return Config(
+        neo4j_uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+        neo4j_username=os.getenv("NEO4J_USERNAME", "neo4j"),
+        neo4j_password=os.getenv("NEO4J_PASSWORD", "test_password"),
+        neo4j_database=os.getenv("NEO4J_DATABASE"),
+        openrouter_api_key=os.getenv("OPENROUTER_API_KEY", "test_openrouter_key"),
+        lighthouse_api_key=os.getenv("LIGHTHOUSE_API_KEY", "test_lighthouse_key"),
+        log_level="DEBUG",
+    )
+
+
 @pytest.fixture(autouse=True)
 def setup_test_env():
     """Set up test environment variables."""
-    # Set test API keys to avoid authentication errors
+    # Set test API keys to avoid authentication errors (for backward compatibility)
     os.environ["OPENAI_API_KEY"] = "sk-test_key_for_testing_only_not_real"
     os.environ["HUGGINGFACE_API_TOKEN"] = "test_token_for_testing"
 

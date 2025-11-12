@@ -20,14 +20,17 @@ class TestMORQAFaithfulnessEvaluator:
     def test_initialization_from_env_var(self):
         """Test initialization from environment variable."""
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "env-api-key"}):
-            evaluator = MORQAFaithfulnessEvaluator()
+            # Note: Evaluator doesn't auto-read from env, so we pass it explicitly
+            evaluator = MORQAFaithfulnessEvaluator(
+                api_key=os.environ.get("OPENROUTER_API_KEY")
+            )
             assert evaluator.api_key == "env-api-key"
 
     def test_initialization_without_api_key_raises_error(self):
         """Test that initialization without API key raises error."""
         with patch.dict(os.environ, {}, clear=True):
             os.environ.pop("OPENROUTER_API_KEY", None)
-            with pytest.raises(ValueError, match="OpenRouter API key is required"):
+            with pytest.raises(ValueError, match="OpenRouter API key required"):
                 MORQAFaithfulnessEvaluator()
 
     def test_initialization_with_custom_model(self):

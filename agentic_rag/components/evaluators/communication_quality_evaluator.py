@@ -17,12 +17,14 @@ Scores: 5=Excellent, 4=Good, 3=Acceptable, 2=Poor, 1=Unacceptable.
 """
 
 import json
-import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import requests  # type: ignore[import-untyped]
 from haystack import component, default_from_dict, default_to_dict
+
+if TYPE_CHECKING:
+    from ...config import Config
 
 
 @component
@@ -42,19 +44,27 @@ class CommunicationQualityEvaluator:
         api_key: Optional[str] = None,
         model: str = "anthropic/claude-3.5-sonnet",
         base_url: str = "https://openrouter.ai/api/v1",
+        config: Optional["Config"] = None,
     ):
         """Initialize communication quality evaluation metric.
 
         Args:
-            api_key: OpenRouter API key (or set OPENROUTER_API_KEY env var)
+            api_key: OpenRouter API key (overrides config)
             model: Model identifier on OpenRouter
             base_url: OpenRouter API base URL
+            config: Config object with API key (required if api_key not provided)
         """
-        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+        # Priority: explicit api_key > config object
+        if config is not None:
+            self.api_key = api_key or config.openrouter_api_key
+        else:
+            self.api_key = api_key
+
         if not self.api_key:
             raise ValueError(
-                "OpenRouter API key is required. "
-                "Provide it via api_key parameter or OPENROUTER_API_KEY environment variable."
+                "OpenRouter API key required. Provide via config parameter:\n"
+                "  config = Config(openrouter_api_key='your-key')\n"
+                "  CommunicationQualityEvaluator(config=config)"
             )
         self.model = model
         self.base_url = base_url

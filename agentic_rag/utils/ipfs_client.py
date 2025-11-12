@@ -2,11 +2,13 @@
 
 import io
 import json
-import os
-from typing import Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 import requests  # type: ignore
 from dotenv import load_dotenv
+
+if TYPE_CHECKING:
+    from ..config import Config
 
 load_dotenv()
 
@@ -24,18 +26,29 @@ class LighthouseClient:
     BASE_URL = "https://upload.lighthouse.storage/api/v0"
     GATEWAY_URL = "https://gateway.lighthouse.storage/ipfs"
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        config: Optional["Config"] = None,
+    ):
         """
         Initialize Lighthouse client.
 
         Args:
-            api_key: Lighthouse API key (defaults to LIGHTHOUSE_API_KEY env var)
+            api_key: Lighthouse API key (overrides config)
+            config: Config object with API key (required if api_key not provided)
         """
-        self.api_key = api_key or os.getenv("LIGHTHOUSE_API_KEY")
+        # Priority: explicit api_key > config object
+        if config is not None:
+            self.api_key = api_key or config.lighthouse_api_key
+        else:
+            self.api_key = api_key
+
         if not self.api_key:
             raise ValueError(
-                "LIGHTHOUSE_API_KEY not found. "
-                "Set it in .env or pass it to LighthouseClient(api_key=...)"
+                "Lighthouse API key required. Provide via config parameter:\n"
+                "  config = Config(lighthouse_api_key='your-key')\n"
+                "  LighthouseClient(config=config)"
             )
 
     def upload_text(self, text: str, name: Optional[str] = None) -> Dict[str, Any]:

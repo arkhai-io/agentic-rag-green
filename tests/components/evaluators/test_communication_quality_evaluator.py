@@ -21,13 +21,16 @@ class TestCommunicationQualityEvaluator:
     def test_init_without_api_key(self):
         """Test initialization without API key raises ValueError."""
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(ValueError, match="OpenRouter API key is required"):
+            with pytest.raises(ValueError, match="OpenRouter API key required"):
                 CommunicationQualityEvaluator()
 
     def test_init_with_env_var(self):
         """Test initialization with environment variable."""
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "env-key"}):
-            evaluator = CommunicationQualityEvaluator()
+            # Note: Evaluator doesn't auto-read from env, so we pass it explicitly
+            evaluator = CommunicationQualityEvaluator(
+                api_key=os.environ.get("OPENROUTER_API_KEY")
+            )
             assert evaluator.api_key == "env-key"
 
     @patch("requests.post")

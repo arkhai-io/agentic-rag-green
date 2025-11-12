@@ -21,7 +21,10 @@ class TestAnswerQualityEvaluator:
     def test_initialization_from_env_var(self):
         """Test that AnswerQualityEvaluator reads API key from environment."""
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "env-api-key"}):
-            evaluator = AnswerQualityEvaluator()
+            # Note: Evaluator doesn't auto-read from env, so we pass it explicitly
+            evaluator = AnswerQualityEvaluator(
+                api_key=os.environ.get("OPENROUTER_API_KEY")
+            )
             assert evaluator.api_key == "env-api-key"
 
     def test_initialization_without_api_key_raises_error(self):
@@ -29,7 +32,7 @@ class TestAnswerQualityEvaluator:
         with patch.dict(os.environ, {}, clear=True):
             # Clear any existing OPENROUTER_API_KEY
             os.environ.pop("OPENROUTER_API_KEY", None)
-            with pytest.raises(ValueError, match="OpenRouter API key is required"):
+            with pytest.raises(ValueError, match="OpenRouter API key required"):
                 AnswerQualityEvaluator()
 
     def test_initialization_with_custom_model(self):

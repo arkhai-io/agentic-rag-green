@@ -22,8 +22,9 @@ from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 
+from agentic_rag import Config, PipelineFactory
 from agentic_rag.components import GraphStore
-from agentic_rag.pipeline import PipelineFactory, PipelineRunner
+from agentic_rag.pipeline import PipelineRunner
 
 # Load environment variables from .env file
 load_dotenv()
@@ -35,10 +36,14 @@ USERNAME = "your_username"
 FAST_PIPELINE = "fast_retrieval_index"
 SEMANTIC_PIPELINE = "semantic_retrieval_index"
 
-# Neo4j connection details
-NEO4J_URI = os.getenv("NEO4J_URI")
-NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")
-NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+# Create configuration from environment variables
+config = Config(
+    neo4j_uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+    neo4j_username=os.getenv("NEO4J_USERNAME", "neo4j"),
+    neo4j_password=os.getenv("NEO4J_PASSWORD"),
+    lighthouse_api_key=os.getenv("LIGHTHOUSE_API_KEY"),  # Optional: For IPFS storage
+    log_level=os.getenv("AGENTIC_RAG_LOG_LEVEL", "INFO"),
+)
 
 
 def create_indexing_pipelines() -> List:
@@ -58,15 +63,9 @@ def create_indexing_pipelines() -> List:
     Returns:
         List[PipelineSpec]: List of created pipeline specifications
     """
-    # Initialize connection to Neo4j graph store
-    graph_store = GraphStore(
-        uri=NEO4J_URI,
-        username=NEO4J_USERNAME,
-        password=NEO4J_PASSWORD,
-    )
-
-    # Initialize pipeline factory
-    factory = PipelineFactory(graph_store=graph_store, username=USERNAME)
+    # Initialize pipeline factory with config
+    # GraphStore will be created automatically from config
+    factory = PipelineFactory(config=config, username=USERNAME)
 
     # Define component specs for both pipelines
     # Both pipelines use the same component types but different configurations
@@ -122,7 +121,8 @@ def create_indexing_pipelines() -> List:
         pipeline_types=["indexing", "indexing"],
     )
 
-    graph_store.close()
+    if factory.graph_store:
+        factory.graph_store.close()
     return pipelines
 
 
@@ -145,12 +145,8 @@ def run_indexing_pipelines(data_directory: str) -> Dict[str, Any]:
     Returns:
         dict: Results from both pipelines
     """
-    # Connect to Neo4j
-    graph_store = GraphStore(
-        uri=NEO4J_URI,
-        username=NEO4J_USERNAME,
-        password=NEO4J_PASSWORD,
-    )
+    # Initialize GraphStore with config
+    graph_store = GraphStore(config=config)
 
     # Initialize runner with both indexing pipelines
     runner = PipelineRunner(

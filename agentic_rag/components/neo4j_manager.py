@@ -1,12 +1,14 @@
 """Simple graph database store for batch nodes and edges."""
 
-import os
 import ssl
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import certifi
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
+
+if TYPE_CHECKING:
+    from ..config import Config
 
 load_dotenv()
 
@@ -18,13 +20,37 @@ class GraphStore:
         username: Optional[str] = None,
         password: Optional[str] = None,
         database: Optional[str] = None,
+        config: Optional["Config"] = None,
     ) -> None:
-        # Use provided values, then environment variables, then working defaults as fallback
-        self.uri = uri or os.getenv("NEO4J_URI")
-        self.username = username or os.getenv("NEO4J_USERNAME")
-        self.password = password or os.getenv("NEO4J_PASSWORD")
-        # Allow configuration of database name, default to None (uses default database)
-        self.database = database or os.getenv("NEO4J_DATABASE")
+        """
+        Initialize GraphStore with Neo4j connection.
+
+        Args:
+            uri: Neo4j URI (overrides config)
+            username: Neo4j username (overrides config)
+            password: Neo4j password (overrides config)
+            database: Neo4j database name (overrides config)
+            config: Config object with credentials (required if params not provided)
+        """
+        # Priority: explicit params > config object
+        if config is not None:
+            self.uri = uri or config.neo4j_uri
+            self.username = username or config.neo4j_username
+            self.password = password or config.neo4j_password
+            self.database = database or config.neo4j_database
+        else:
+            # Use provided explicit values
+            self.uri = uri
+            self.username = username
+            self.password = password
+            self.database = database
+
+        if not all([self.uri, self.username, self.password]):
+            raise ValueError(
+                "Neo4j credentials required. Provide via config parameter:\n"
+                "  config = Config(neo4j_uri='...', neo4j_username='...', neo4j_password='...')\n"
+                "  GraphStore(config=config)"
+            )
 
         print(f"GraphStore connecting to: {self.uri} with user: {self.username}")
         if self.database:

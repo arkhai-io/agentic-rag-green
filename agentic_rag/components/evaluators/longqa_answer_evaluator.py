@@ -18,12 +18,14 @@ Scores: 5=Agree, 4=Partially Agree, 3=Neutral, 2=Partially Disagree, 1=Disagree.
 """
 
 import json
-import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import requests  # type: ignore[import-untyped]
 from haystack import component, default_from_dict, default_to_dict
+
+if TYPE_CHECKING:
+    from ...config import Config
 
 
 @component
@@ -37,7 +39,14 @@ class LongQAAnswerEvaluator:
 
     Usage:
         ```python
+        # With explicit API key
         evaluator = LongQAAnswerEvaluator(api_key="your-openrouter-key")
+
+        # With Config object
+        from agentic_rag import Config
+        config = Config(openrouter_api_key="your-key")
+        evaluator = LongQAAnswerEvaluator(config=config)
+
         result = evaluator.run(
             query="What are the side effects of aspirin?",
             replies=["Aspirin can cause stomach upset..."]
@@ -50,19 +59,27 @@ class LongQAAnswerEvaluator:
         api_key: Optional[str] = None,
         model: str = "anthropic/claude-3.5-sonnet",
         base_url: str = "https://openrouter.ai/api/v1",
+        config: Optional["Config"] = None,
     ):
         """Initialize LongQA answer evaluation metric.
 
         Args:
-            api_key: OpenRouter API key. If None, reads from OPENROUTER_API_KEY env var.
+            api_key: OpenRouter API key (overrides config)
             model: Model identifier on OpenRouter
             base_url: OpenRouter API base URL
+            config: Config object with API key (required if api_key not provided)
         """
-        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+        # Priority: explicit api_key > config object
+        if config is not None:
+            self.api_key = api_key or config.openrouter_api_key
+        else:
+            self.api_key = api_key
+
         if not self.api_key:
             raise ValueError(
-                "OpenRouter API key is required. "
-                "Provide it via api_key parameter or OPENROUTER_API_KEY environment variable."
+                "OpenRouter API key required. Provide via config parameter:\n"
+                "  config = Config(openrouter_api_key='your-key')\n"
+                "  LongQAAnswerEvaluator(config=config)"
             )
 
         self.model = model

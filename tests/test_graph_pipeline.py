@@ -1,21 +1,11 @@
 """Test graph-based pipeline architecture (Factory + Runner + Neo4j)."""
 
-import os
 from unittest.mock import MagicMock
 
 import pytest
 
 from agentic_rag.components import GraphStore, get_default_registry
 from agentic_rag.pipeline import PipelineFactory, PipelineRunner
-
-
-def neo4j_available():
-    """Check if Neo4j credentials are available."""
-    return bool(
-        os.getenv("NEO4J_URI")
-        and os.getenv("NEO4J_USERNAME")
-        and os.getenv("NEO4J_PASSWORD")
-    )
 
 
 @pytest.fixture
@@ -29,12 +19,16 @@ def mock_graph_store():
 
 
 @pytest.fixture
-def graph_store():
+def graph_store(test_config):
     """Create a real or mock GraphStore based on availability."""
-    if neo4j_available():
-        return GraphStore()
-    else:
-        return mock_graph_store()
+    # Try to create real GraphStore with test_config
+    # If it fails, return a mock
+    try:
+        if test_config.validate_neo4j():
+            return GraphStore(config=test_config)
+    except Exception:
+        pass
+    return mock_graph_store()
 
 
 class TestGraphPipelineArchitecture:
@@ -44,9 +38,11 @@ class TestGraphPipelineArchitecture:
         """Set up test fixtures."""
         self.registry = get_default_registry()
 
-    def test_factory_builds_pipeline_graph(self, mock_graph_store):
+    def test_factory_builds_pipeline_graph(self, mock_graph_store, test_config):
         """Test that factory builds and stores pipeline graph in Neo4j."""
-        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
+        factory = PipelineFactory(
+            graph_store=mock_graph_store, username="test_user", config=test_config
+        )
 
         pipeline_spec = [
             {"type": "CONVERTER.PDF"},
@@ -62,9 +58,11 @@ class TestGraphPipelineArchitecture:
         assert spec.components[0].name == "pdf_converter"
         assert spec.components[1].name == "chunker"
 
-    def test_runner_loads_pipeline_graph(self, mock_graph_store):
+    def test_runner_loads_pipeline_graph(self, mock_graph_store, test_config):
         """Test that runner can load pipeline graph from Neo4j."""
-        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
+        factory = PipelineFactory(
+            graph_store=mock_graph_store, username="test_user", config=test_config
+        )
 
         # First, create a pipeline
         pipeline_spec = [
@@ -110,9 +108,11 @@ class TestGraphPipelineArchitecture:
         assert runner._pipeline_graphs
         assert "load_test_pipeline" in runner._pipeline_graphs
 
-    def test_runner_builds_haystack_components(self, mock_graph_store):
+    def test_runner_builds_haystack_components(self, mock_graph_store, test_config):
         """Test that runner builds runtime Haystack components from graph."""
-        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
+        factory = PipelineFactory(
+            graph_store=mock_graph_store, username="test_user", config=test_config
+        )
 
         # Create pipeline
         pipeline_spec = [
@@ -171,9 +171,11 @@ class TestGraphPipelineArchitecture:
         with pytest.raises(TypeError):
             PipelineRunner()
 
-    def test_pipeline_with_config(self, mock_graph_store):
+    def test_pipeline_with_config(self, mock_graph_store, test_config):
         """Test pipeline creation with custom configuration."""
-        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
+        factory = PipelineFactory(
+            graph_store=mock_graph_store, username="test_user", config=test_config
+        )
 
         pipeline_spec = [
             {"type": "CHUNKER.DOCUMENT_SPLITTER"},
@@ -201,7 +203,7 @@ class TestGraphPipelineArchitecture:
         assert spec.name == "pdf_converter"
         assert spec.component_type.value == "converter"
 
-    def test_invalid_pipeline_hash_handling(self, mock_graph_store):
+    def test_invalid_pipeline_hash_handling(self, mock_graph_store, test_config):
         """Test handling of invalid pipeline hashes."""
         # Mock empty response for nonexistent pipeline
         mock_graph_store.validate_user_exists.return_value = True

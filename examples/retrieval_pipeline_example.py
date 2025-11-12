@@ -23,8 +23,8 @@ from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 
-from agentic_rag.components import GraphStore
-from agentic_rag.pipeline import PipelineFactory, PipelineRunner
+from agentic_rag import Config, PipelineFactory
+from agentic_rag.pipeline import PipelineRunner
 
 # Load environment variables from .env file
 load_dotenv()
@@ -37,13 +37,14 @@ RETRIEVAL_PIPELINE_NAME = "multi_source_retrieval"
 # Querying both provides diverse retrieval: fast + semantic understanding
 INDEXING_PIPELINES = ["fast_retrieval_index", "semantic_retrieval_index"]
 
-# Neo4j connection details
-NEO4J_URI = os.getenv("NEO4J_URI")
-NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")
-NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
-
-# OpenRouter API key for LLM generation
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+# Create configuration from environment variables
+config = Config(
+    neo4j_uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+    neo4j_username=os.getenv("NEO4J_USERNAME", "neo4j"),
+    neo4j_password=os.getenv("NEO4J_PASSWORD"),
+    openrouter_api_key=os.getenv("OPENROUTER_API_KEY"),  # Required for LLM generation
+    log_level=os.getenv("AGENTIC_RAG_LOG_LEVEL", "INFO"),
+)
 
 
 def create_retrieval_pipeline() -> Any:
@@ -70,15 +71,9 @@ def create_retrieval_pipeline() -> Any:
     Returns:
         PipelineSpec: The created pipeline specification
     """
-    # Initialize connection to Neo4j graph store
-    graph_store = GraphStore(
-        uri=NEO4J_URI,
-        username=NEO4J_USERNAME,
-        password=NEO4J_PASSWORD,
-    )
-
-    # Initialize pipeline factory
-    factory = PipelineFactory(graph_store=graph_store, username=USERNAME)
+    # Initialize pipeline factory with config
+    # GraphStore will be created automatically from config
+    factory = PipelineFactory(config=config, username=USERNAME)
 
     # Define pipeline components
     # INDEX is a placeholder that auto-injects embedder + retriever from indexing pipelines
@@ -109,7 +104,7 @@ def create_retrieval_pipeline() -> Any:
         Answer:"""
 
     # Configure component parameters
-    config = {
+    pipeline_config = {
         "_pipeline_name": RETRIEVAL_PIPELINE_NAME,
         # Specify which indexing pipelines to query
         # This creates 2 parallel branches, one for each indexing pipeline
@@ -127,10 +122,9 @@ def create_retrieval_pipeline() -> Any:
         "prompt_builder": {
             "template": prompt_template,
         },
-        # Generator config
+        # Generator config (API key from config)
         "openrouter_generator": {
             "model": "anthropic/claude-3.5-sonnet",
-            "api_key": OPENROUTER_API_KEY,
             "generation_kwargs": {
                 "temperature": 0.7,
                 "max_tokens": 1000,
@@ -153,11 +147,12 @@ def create_retrieval_pipeline() -> Any:
     # Build the pipeline and store it in Neo4j
     pipeline = factory.build_pipeline_graphs_from_specs(
         pipeline_specs=[pipeline_spec],
-        configs=[config],
+        configs=[pipeline_config],
         pipeline_types=["retrieval"],
     )
 
-    graph_store.close()
+    if factory.graph_store:
+        factory.graph_store.close()
     return pipeline[0]
 
 
@@ -188,19 +183,12 @@ def run_retrieval_pipeline(
             - documents: Aggregated and ranked documents
             - Evaluation metrics per branch
     """
-    # Connect to Neo4j
-    graph_store = GraphStore(
-        uri=NEO4J_URI,
-        username=NEO4J_USERNAME,
-        password=NEO4J_PASSWORD,
-    )
-
     # Initialize runner - automatically loads pipeline from Neo4j
     # This creates 2 separate branch pipelines (one per indexing pipeline)
     runner = PipelineRunner(
-        graph_store=graph_store,
         username=USERNAME,
         pipeline_names=[RETRIEVAL_PIPELINE_NAME],
+        config=config,  # Config provides Neo4j connection and API keys
         enable_caching=False,
     )
 
@@ -219,7 +207,7 @@ def run_retrieval_pipeline(
         relevant_doc_ids=relevant_doc_ids or [],  # Optional for document recall
     )
 
-    graph_store.close()
+    runner.graph_store.close()
     return result  # type: ignore[no-any-return]
 
 

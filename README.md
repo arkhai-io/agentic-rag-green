@@ -125,18 +125,29 @@ retrieval_pipeline = {
 
 **3. Add evaluators to measure answer quality:**
 ```python
+from agentic_rag import Config
+
+# Configure with API key for LLM-based evaluators
+config = Config(openrouter_api_key="your-key")
+
 retrieval_spec = [
     [
         {"type": "INDEX"},
         {"type": "GENERATOR.OPENROUTER"},
         # Grounded metrics (require gold standard)
         {"type": "EVALUATOR.BLEU"},           # Lexical overlap
-        {"type": "EVALUATOR.ANSWER_QUALITY"}, # LLM-as-judge
+        {"type": "EVALUATOR.ANSWER_QUALITY"}, # LLM-as-judge (needs API key)
         # Ungrounded metrics (no gold standard)
         {"type": "EVALUATOR.COHERENCE"},      # Semantic consistency
         {"type": "EVALUATOR.READABILITY"},    # Reading complexity
     ]
 ]
+
+# Pass config to components that need it
+retrieval_config = {
+    "answer_quality_evaluator": {"config": config},
+    "openrouter_generator": {"config": config}
+}
 ```
 
 **4. Compare results across configurations:**
@@ -168,15 +179,49 @@ poetry install
 
 **Requirements**: Python 3.10+, Neo4j
 
+### Configuration
+
+Agentic RAG supports two ways to provide configuration:
+
+**1. Using Config object (Recommended for SDK usage):**
+```python
+from agentic_rag import Config
+
+config = Config(
+    neo4j_uri="bolt://localhost:7687",
+    neo4j_username="neo4j",
+    neo4j_password="password",
+    openrouter_api_key="your-key"  # For LLM-based evaluators and generators
+)
+```
+
+**2. Environment variables (Fallback):**
+```bash
+export NEO4J_URI="bolt://localhost:7687"
+export NEO4J_USERNAME="neo4j"
+export NEO4J_PASSWORD="password"
+export OPENROUTER_API_KEY="your-key"
+```
+
+The Config object takes priority, with environment variables used as fallback if not provided.
+
 ## Quick Start
 
 ### 1. Index documents with multiple strategies
 
 ```python
+from agentic_rag import Config
 from agentic_rag.pipeline import PipelineFactory, PipelineRunner
 from agentic_rag.components import GraphStore
 
-factory = PipelineFactory(graph_store=GraphStore())
+# Initialize configuration
+config = Config(
+    neo4j_uri="bolt://localhost:7687",
+    neo4j_username="neo4j",
+    neo4j_password="password"
+)
+
+factory = PipelineFactory(config=config, username="myuser")
 
 # Create 2 indexing pipelines with different chunk sizes
 indexing_specs = [
@@ -207,12 +252,15 @@ configs = [
 factory.build_pipeline_graphs_from_specs(
     pipeline_specs=indexing_specs * 2,
     configs=configs,
-    pipeline_types=["indexing", "indexing"],
-    username="myuser"
+    pipeline_types=["indexing", "indexing"]
 )
 
 # Index documents
-runner = PipelineRunner(graph_store=factory.graph_store, username="myuser")
+runner = PipelineRunner(
+    username="myuser",
+    pipeline_names=["small_chunks", "large_chunks"],
+    config=config
+)
 runner.run(pipeline_name="small_chunks", type="indexing", data_path="./docs/paper.pdf")
 runner.run(pipeline_name="large_chunks", type="indexing", data_path="./docs/paper.pdf")
 ```
@@ -243,12 +291,15 @@ retrieval_config = [
 factory.build_pipeline_graphs_from_specs(
     pipeline_specs=retrieval_spec,
     configs=retrieval_config,
-    pipeline_types=["retrieval"],
-    username="myuser"
+    pipeline_types=["retrieval"]
 )
 
 # Query retrieves from both stores, reranks, generates answer
-runner = PipelineRunner(graph_store=factory.graph_store, username="myuser")
+runner = PipelineRunner(
+    username="myuser",
+    pipeline_names=["multi_retrieval"],
+    config=config
+)
 result = runner.run(
     pipeline_name="multi_retrieval",
     type="retrieval",
@@ -277,15 +328,35 @@ print(f"Answer: {result['replies'][0]}")
 Built-in evaluation metrics for answer quality:
 
 ```python
+from agentic_rag import Config
+
+# Configure with OpenRouter API key for LLM-based evaluators
+config = Config(
+    neo4j_uri="bolt://localhost:7687",
+    neo4j_username="neo4j",
+    neo4j_password="password",
+    openrouter_api_key="your-key"  # Required for LLM-based evaluators
+)
+
 # Add evaluators to your retrieval pipeline
 retrieval_spec = [
     [
         {"type": "INDEX"},
         {"type": "GENERATOR.OPENROUTER"},
         {"type": "EVALUATOR.BLEU"},           # Lexical overlap
-        {"type": "EVALUATOR.ANSWER_QUALITY"}, # LLM-as-judge
+        {"type": "EVALUATOR.ANSWER_QUALITY"}, # LLM-as-judge (requires API key)
         {"type": "EVALUATOR.COHERENCE"},      # Semantic consistency
     ]
+]
+
+# Pass config to components that need it
+retrieval_config = [
+    {
+        "_pipeline_name": "multi_retrieval",
+        "_indexing_pipelines": ["small_chunks", "large_chunks"],
+        "answer_quality_evaluator": {"config": config},  # Pass config to evaluator
+        "openrouter_generator": {"config": config}       # Pass config to generator
+    }
 ]
 
 result = runner.run(
@@ -305,13 +376,15 @@ print(result['eval_data']['eval_metrics'])
 
 **Grounded metrics** (require gold standard):
 - BLEU, ROUGE, METEOR - Lexical overlap
-- Answer Quality, Fact Matching - LLM-based evaluation
+- Answer Quality, Fact Matching - LLM-based evaluation (require OpenRouter API key)
 
 **Ungrounded metrics** (no gold standard):
-- Coherence - Semantic consistency
-- Readability - Reading level, complexity
-- Answer Structure - Organization, formatting
-- Communication Quality - Tone, professionalism
+- Coherence - Semantic consistency (local embeddings)
+- Readability - Reading level, complexity (algorithmic)
+- Answer Structure - Organization, formatting (requires OpenRouter API key)
+- Communication Quality - Tone, professionalism (requires OpenRouter API key)
+
+**Note**: LLM-based evaluators (Answer Quality, Fact Matching, Answer Structure, Communication Quality, LongQA, MoRQA) require an OpenRouter API key provided via `Config`.
 
 ## Development
 

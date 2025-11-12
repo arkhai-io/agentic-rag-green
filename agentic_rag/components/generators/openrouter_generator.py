@@ -1,10 +1,12 @@
 """OpenRouter LLM generator component for Haystack."""
 
-import os
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import requests  # type: ignore[import-untyped]
 from haystack import component, default_from_dict, default_to_dict
+
+if TYPE_CHECKING:
+    from ...config import Config
 
 
 @component
@@ -16,10 +18,16 @@ class OpenRouterGenerator:
 
     Usage:
         ```python
+        # With explicit API key
         generator = OpenRouterGenerator(
             api_key="your-api-key",
             model="anthropic/claude-3.5-sonnet",
         )
+
+        # With Config object
+        from agentic_rag import Config
+        config = Config(openrouter_api_key="your-api-key")
+        generator = OpenRouterGenerator(config=config, model="anthropic/claude-3.5-sonnet")
 
         response = generator.run(prompt="What is RAG?")
         print(response["replies"][0])
@@ -41,22 +49,30 @@ class OpenRouterGenerator:
         api_base: str = "https://openrouter.ai/api/v1",
         generation_kwargs: Optional[Dict[str, Any]] = None,
         streaming_callback: Optional[Any] = None,
+        config: Optional["Config"] = None,
     ):
         """
         Initialize OpenRouter generator.
 
         Args:
-            api_key: OpenRouter API key. If None, reads from OPENROUTER_API_KEY env var.
+            api_key: OpenRouter API key (overrides config)
             model: Model to use (e.g., "anthropic/claude-3.5-sonnet").
             api_base: Base URL for OpenRouter API.
             generation_kwargs: Additional parameters for generation (temperature, max_tokens, etc.).
             streaming_callback: Callback for streaming responses (not yet implemented).
+            config: Config object with API key (required if api_key not provided)
         """
-        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+        # Priority: explicit api_key > config object
+        if config is not None:
+            self.api_key = api_key or config.openrouter_api_key
+        else:
+            self.api_key = api_key
+
         if not self.api_key:
             raise ValueError(
-                "OpenRouter API key is required. "
-                "Provide it via api_key parameter or OPENROUTER_API_KEY environment variable."
+                "OpenRouter API key required. Provide via config parameter:\n"
+                "  config = Config(openrouter_api_key='your-key')\n"
+                "  OpenRouterGenerator(config=config, model='...')"
             )
 
         self.model = model

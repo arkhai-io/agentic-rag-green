@@ -30,25 +30,29 @@ class TestCoreFunctionality:
         # Check custom components
         assert "MARKDOWN_AWARE" in available["CHUNKER"]
 
-    def test_factory_creation(self) -> None:
+    def test_factory_creation(self, test_config) -> None:
         """Test that factory can be created."""
         from unittest.mock import MagicMock
 
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
-        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
+        factory = PipelineFactory(
+            graph_store=mock_graph_store, username="test_user", config=test_config
+        )
         assert factory is not None
         assert factory.registry is not None
 
-    def test_component_parsing(self) -> None:
+    def test_component_parsing(self, test_config) -> None:
         """Test parsing component specifications."""
         from unittest.mock import MagicMock
 
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
-        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
+        factory = PipelineFactory(
+            graph_store=mock_graph_store, username="test_user", config=test_config
+        )
 
         # Test valid parsing
         test_cases = [
@@ -64,14 +68,16 @@ class TestCoreFunctionality:
             result = factory._parse_component_spec(spec_dict)
             assert result == expected_name, f"Expected {expected_name}, got {result}"
 
-    def test_component_lookup(self) -> None:
+    def test_component_lookup(self, test_config) -> None:
         """Test looking up component specifications."""
         from unittest.mock import MagicMock
 
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
-        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
+        factory = PipelineFactory(
+            graph_store=mock_graph_store, username="test_user", config=test_config
+        )
 
         # Test valid lookups
         test_components = [
@@ -90,14 +96,16 @@ class TestCoreFunctionality:
             assert spec.haystack_class is not None
             assert len(spec.haystack_class) > 0
 
-    def test_invalid_specifications(self) -> None:
+    def test_invalid_specifications(self, test_config) -> None:
         """Test error handling for invalid specifications."""
         from unittest.mock import MagicMock
 
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
-        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
+        factory = PipelineFactory(
+            graph_store=mock_graph_store, username="test_user", config=test_config
+        )
 
         # Test invalid category
         with pytest.raises(ValueError, match="Invalid component specification"):
@@ -117,14 +125,16 @@ class TestCoreFunctionality:
         ):
             factory._parse_component_spec({"type": "INVALID_FORMAT"})
 
-    def test_pipeline_spec_creation_without_building(self) -> None:
+    def test_pipeline_spec_creation_without_building(self, test_config) -> None:
         """Test creating pipeline specs without building Haystack pipelines."""
         from unittest.mock import MagicMock
 
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
-        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
+        factory = PipelineFactory(
+            graph_store=mock_graph_store, username="test_user", config=test_config
+        )
 
         # Test parsing multiple components
         component_specs = [
@@ -147,14 +157,16 @@ class TestCoreFunctionality:
         assert component_specs_list[1].name == "chunker"
         assert component_specs_list[2].name == "embedder"
 
-    def test_config_merging_logic(self) -> None:
+    def test_config_merging_logic(self, test_config) -> None:
         """Test configuration merging without building components."""
         from unittest.mock import MagicMock
 
         from agentic_rag.components import GraphStore
 
         mock_graph_store = MagicMock(spec=GraphStore)
-        factory = PipelineFactory(graph_store=mock_graph_store, username="test_user")
+        factory = PipelineFactory(
+            graph_store=mock_graph_store, username="test_user", config=test_config
+        )
         spec = factory.registry.get_component_spec("embedder")
 
         # Test config merging

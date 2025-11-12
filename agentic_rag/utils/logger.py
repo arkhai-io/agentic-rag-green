@@ -6,16 +6,27 @@ Usage in your modules:
     logger = get_logger(__name__, username="alice")
     logger.info("Processing started")
     logger.error("Something went wrong", exc_info=True)
+
+    # With Config object
+    from agentic_rag import Config
+    config = Config(log_level="DEBUG")
+    logger = get_logger(__name__, username="alice", config=config)
 """
 
 import logging
 import os
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from ..config import Config
 
 
 def get_logger(
-    name: str, username: Optional[str] = None, level: Optional[str] = None
+    name: str,
+    username: Optional[str] = None,
+    level: Optional[str] = None,
+    config: Optional["Config"] = None,
 ) -> logging.Logger:
     """
     Get a configured logger instance with per-user, per-module log files.
@@ -31,7 +42,8 @@ def get_logger(
         name: Logger name (typically __name__ from calling module)
         username: Username for per-user log file
         level: Log level override (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-               Defaults to AGENTIC_RAG_LOG_LEVEL env var or INFO
+               Defaults to config.log_level or AGENTIC_RAG_LOG_LEVEL env var or INFO
+        config: Config object with logging settings (falls back to env vars)
 
     Returns:
         Configured logger instance
@@ -44,6 +56,11 @@ def get_logger(
         >>> # With per-user, per-module file logging
         >>> logger = get_logger(__name__, username="alice")
         >>> logger.info("User alice created pipeline")
+        >>>
+        >>> # With Config object
+        >>> from agentic_rag import Config
+        >>> config = Config(log_level="DEBUG")
+        >>> logger = get_logger(__name__, username="alice", config=config)
     """
     # Create logger name with username suffix if provided
     logger_name = f"{name}.{username}" if username else name
@@ -51,8 +68,12 @@ def get_logger(
 
     # Only configure if not already configured
     if not logger.handlers:
-        # Get log level from args, env var, or default to INFO
-        log_level_str: str = level or os.getenv("AGENTIC_RAG_LOG_LEVEL") or "INFO"
+        # Get log level: explicit param > config object > default
+        log_level_str: str
+        if config is not None:
+            log_level_str = level or config.log_level
+        else:
+            log_level_str = level or "INFO"
         logger.setLevel(getattr(logging, log_level_str.upper()))
 
         # Console handler with simple format
@@ -83,8 +104,9 @@ def get_logger(
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
 
-        # Optional: General log file if env var is set
-        log_file = os.getenv("AGENTIC_RAG_LOG_FILE")
+        # Optional: General log file if config is set
+        log_file = config.log_file if config is not None else None
+
         if log_file:
             log_path = Path(log_file)
             log_path.parent.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,6 @@
 """Factory for creating pipelines from specifications."""
 
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ..components import GraphStore, get_default_registry
 from ..types import (
@@ -12,23 +12,65 @@ from ..types import (
 from ..utils.logger import configure_haystack_logging, get_logger
 from .storage import GraphStorage
 
+if TYPE_CHECKING:
+    from ..config import Config
+
 
 class PipelineFactory:
-    """Factory for creating pipelines from component specifications."""
+    """
+    Factory for creating pipelines from component specifications.
+
+    Usage:
+        ```python
+        # With environment variables (backward compatible)
+        factory = PipelineFactory(username="alice")
+
+        # With Config object (SDK style)
+        from agentic_rag import Config
+        config = Config(
+            neo4j_uri="bolt://localhost:7687",
+            neo4j_username="neo4j",
+            neo4j_password="password",
+            openrouter_api_key="your-key"
+        )
+        factory = PipelineFactory(config=config, username="alice")
+        ```
+    """
+
+    graph_store: Optional[GraphStore]
 
     def __init__(
-        self, graph_store: Optional[GraphStore] = None, username: str = "test_user"
+        self,
+        graph_store: Optional[GraphStore] = None,
+        username: str = "test_user",
+        config: Optional["Config"] = None,
     ) -> None:
+        """
+        Initialize PipelineFactory.
+
+        Args:
+            graph_store: Optional GraphStore instance (will be created from config if not provided)
+            username: Username for multi-tenant isolation
+            config: Config object with credentials and settings (falls back to env vars)
+        """
         self.registry = get_default_registry()
-        self.graph_store = graph_store
+        self.config = config
         self.username = username
+
+        # Initialize graph_store from config if not provided
+        if graph_store is None and config is not None and config.validate_neo4j():
+            self.graph_store = GraphStore(config=config)
+        else:
+            self.graph_store = graph_store
+
         self.graph_storage = (
-            GraphStorage(graph_store, self.registry) if graph_store else None
+            GraphStorage(self.graph_store, self.registry) if self.graph_store else None
         )
-        self.logger = get_logger(__name__, username=username)
+        self.logger = get_logger(__name__, username=username, config=config)
 
         # Configure Haystack logging to use same log files
-        configure_haystack_logging(username=username, level="DEBUG")
+        log_level = config.log_level if config else "DEBUG"
+        configure_haystack_logging(username=username, level=log_level)
 
     def build_pipeline_graphs_from_specs(
         self,

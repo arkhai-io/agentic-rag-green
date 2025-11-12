@@ -6,9 +6,10 @@ ARCHITECTURE:
 """
 
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ..components import GraphStore
+from ..config import Config, get_config
 from ..types import PipelineUsage
 from ..utils.logger import configure_haystack_logging, get_logger
 from ..utils.metrics import MetricsCollector
@@ -19,23 +20,34 @@ class PipelineRunner:
 
     def __init__(
         self,
-        graph_store: GraphStore,
         username: str,
         pipeline_names: List[str],
+        graph_store: Optional[GraphStore] = None,
         enable_caching: bool = False,
+        config: Optional[Config] = None,
     ) -> None:
         """
         Initialize the pipeline runner.
 
         Args:
-            graph_store: GraphStore for loading pipelines from Neo4j
             username: Username to load pipelines for
             pipeline_names: List of pipeline names to load (e.g., ['pdf_indexing_pipeline'])
+            graph_store: GraphStore for loading pipelines from Neo4j (created from config if not provided)
             enable_caching: If True, wraps components with GatedComponent for caching
+            config: Configuration object with API keys and credentials for components
         """
-        self.graph_store = graph_store
         self.username = username
         self.enable_caching = enable_caching
+        self.config = get_config(
+            config
+        )  # Use provided config or fallback to global/env
+
+        # Create GraphStore from config if not provided
+        if graph_store is None:
+            self.graph_store = GraphStore(config=self.config)
+        else:
+            self.graph_store = graph_store
+
         self.logger = get_logger(__name__, username=username)
         self.metrics = MetricsCollector(username=username)
 
@@ -313,14 +325,33 @@ class PipelineRunner:
 
                 from ..types import create_haystack_component
 
-                config = json.loads(config_json) if config_json != "{}" else {}
+                component_config = (
+                    json.loads(config_json) if config_json != "{}" else {}
+                )
 
                 # Create a copy to avoid mutating the registry's spec
                 spec_copy = deepcopy(base_spec)
 
+                # Inject Config object for components that need API keys
+                # (OpenRouterGenerator, evaluators that use LLMs)
+                needs_config = any(
+                    [
+                        "openrouter" in comp_name.lower(),
+                        "answer_quality" in comp_name.lower(),
+                        "answer_structure" in comp_name.lower(),
+                        "communication_quality" in comp_name.lower(),
+                        "fact_matching" in comp_name.lower(),
+                        "longqa" in comp_name.lower(),
+                        "morqa" in comp_name.lower(),
+                    ]
+                )
+
+                if needs_config and "config" not in component_config:
+                    component_config["config"] = self.config
+
                 # Configure with loaded config
-                if config:
-                    configured_spec = spec_copy.configure(config)
+                if component_config:
+                    configured_spec = spec_copy.configure(component_config)
                 else:
                     configured_spec = spec_copy
 
