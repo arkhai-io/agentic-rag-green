@@ -2,7 +2,7 @@
 
 from .components import ComponentRegistry, get_default_registry
 from .config import Config, get_config, get_global_config, set_global_config
-from .pipeline import PipelineFactory
+from .pipeline import PipelineFactory, PipelineRunner
 from .types import (
     DOCUMENT_STORE,
     ComponentSpec,
@@ -25,6 +25,7 @@ __all__ = [
     "get_global_config",
     "set_global_config",
     "PipelineFactory",
+    "PipelineRunner",
     "ComponentRegistry",
     "get_default_registry",
     "ComponentSpec",
