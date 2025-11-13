@@ -28,9 +28,10 @@ class MetricsCollector:
         """
         self.username = username
 
-        # Get project root and create metrics directory
-        project_root = Path(__file__).parent.parent.parent
-        self.metrics_dir = project_root / ".logs" / "metrics" / username
+        # Use current working directory as base (server root when run from server)
+        # This ensures metrics go to ./.logs/metrics/{username}/ in the server directory
+        cwd = Path.cwd()
+        self.metrics_dir = cwd / ".logs" / "metrics" / username
         self.metrics_dir.mkdir(parents=True, exist_ok=True)
 
         self.components_file = self.metrics_dir / "components.jsonl"

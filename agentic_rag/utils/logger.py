@@ -32,11 +32,11 @@ def get_logger(
     Get a configured logger instance with per-user, per-module log files.
 
     Creates separate log files for each module category:
-    - ./.logs/users/{username}/factory.log
-    - ./.logs/users/{username}/runner.log
-    - ./.logs/users/{username}/storage.log
-    - ./.logs/users/{username}/components.log
-    - ./.logs/users/{username}/gates.log
+    - .logs/users/{username}/factory.log
+    - .logs/users/{username}/runner.log
+    - .logs/users/{username}/storage.log
+    - .logs/users/{username}/components.log
+    - .logs/users/{username}/gates.log
 
     Args:
         name: Logger name (typically __name__ from calling module)
@@ -90,9 +90,10 @@ def get_logger(
 
         # Per-user, per-module file logging
         if username:
-            # Use ./.logs hidden directory relative to project root
-            project_root = Path(__file__).parent.parent.parent
-            user_logs_dir = project_root / ".logs" / "users" / username
+            # Use current working directory as base (server root when run from server)
+            # This ensures logs go to ./.logs/users/{username}/ in the server directory
+            cwd = Path.cwd()
+            user_logs_dir = cwd / ".logs" / "users" / username
             user_logs_dir.mkdir(parents=True, exist_ok=True)
 
             # Determine which log file based on module name
@@ -151,7 +152,7 @@ def _get_log_filename_for_module(module_name: str) -> str:
 
 def get_system_logger(name: str, level: Optional[str] = None) -> logging.Logger:
     """
-    Get a system-wide logger (logs to ./.logs/system.log).
+    Get a system-wide logger (logs to .logs/system.log).
 
     Use this for system-level operations not tied to a specific user.
 
@@ -180,8 +181,9 @@ def get_system_logger(name: str, level: Optional[str] = None) -> logging.Logger:
         logger.addHandler(console_handler)
 
         # System log file
-        project_root = Path(__file__).parent.parent.parent
-        system_log = project_root / ".logs" / "system.log"
+        # Use current working directory as base (server root when run from server)
+        cwd = Path.cwd()
+        system_log = cwd / ".logs" / "system.log"
         system_log.parent.mkdir(parents=True, exist_ok=True)
 
         file_handler = logging.FileHandler(system_log)
@@ -234,16 +236,17 @@ def configure_haystack_logging(
     haystack_logger.addHandler(console_handler)
 
     # File handler - per-user or system
-    project_root = Path(__file__).parent.parent.parent
+    # Use current working directory as base (server root when run from server)
+    cwd = Path.cwd()
 
     if username:
         # Per-user haystack log file in user's directory
-        logs_dir = project_root / ".logs" / "users" / username
+        logs_dir = cwd / ".logs" / "users" / username
         logs_dir.mkdir(parents=True, exist_ok=True)
         log_file = logs_dir / "haystack.log"
     else:
         # System log file
-        logs_dir = project_root / ".logs"
+        logs_dir = cwd / ".logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
         log_file = logs_dir / "system.log"
 
