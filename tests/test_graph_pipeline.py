@@ -187,11 +187,11 @@ class TestGraphPipelineArchitecture:
         assert components is not None
         assert len(components) >= 2  # At least the 2 components we added
 
-    def test_runner_requires_parameters(self):
+    def test_runner_requires_parameters(self, mock_graph_store):
         """Test that runner can be initialized without parameters (singleton)."""
         # PipelineRunner is now a singleton and can be initialized without parameters
         # It will use config defaults
-        runner = PipelineRunner()
+        runner = PipelineRunner(graph_store=mock_graph_store)
         assert runner is not None
         # Subsequent calls should return the same instance
         runner2 = PipelineRunner()
