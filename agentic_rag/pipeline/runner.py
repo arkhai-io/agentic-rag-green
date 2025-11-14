@@ -81,21 +81,26 @@ class PipelineRunner:
         cls._instance = None
         cls._initialized = False
 
-    def load_pipelines(self, pipeline_names: List[str], username: str) -> None:
+    def load_pipelines(
+        self, pipeline_names: List[str], username: str, project: str = "default"
+    ) -> None:
         """
         Load and build pipelines for a specific user.
 
         Args:
             pipeline_names: List of pipeline names to load.
             username: Username to load pipelines for
+            project: Project name (defaults to "default")
         """
-        self.logger.info(f"Loading pipelines for user {username}: {pipeline_names}")
+        self.logger.info(
+            f"Loading pipelines for user {username}, project {project}: {pipeline_names}"
+        )
 
         for pipeline_name in pipeline_names:
             try:
                 # Load pipeline graph
                 self.logger.debug(f"Loading pipeline graph: {pipeline_name}")
-                self.load_pipeline_graph([pipeline_name], username)
+                self.load_pipeline_graph([pipeline_name], username, project)
 
                 # Build Haystack components
                 self.logger.debug(f"Building Haystack components: {pipeline_name}")
@@ -154,7 +159,9 @@ class PipelineRunner:
 
         return pipeline_type
 
-    def load_pipeline_graph(self, pipeline_hashes: List[str], username: str) -> None:
+    def load_pipeline_graph(
+        self, pipeline_hashes: List[str], username: str, project: str = "default"
+    ) -> None:
         """
         Load pipeline metadata from Neo4j and store in _pipeline_graphs.
 
@@ -163,6 +170,8 @@ class PipelineRunner:
 
         Args:
             pipeline_hashes: List of pipeline names to load (e.g., ['retrieval_pipeline'])
+            username: Username for permissions
+            project: Project name to filter by (defaults to "default")
 
         Raises:
             RuntimeError: If no graph store is configured
@@ -232,7 +241,7 @@ class PipelineRunner:
         graph_storage = GraphStorage(self.graph_store, registry)
 
         pipelines_data = graph_storage.load_pipeline_by_hashes(
-            pipeline_hashes, username
+            pipeline_hashes, username, project
         )
 
         # Store the graph representations for all loaded pipelines
@@ -691,7 +700,14 @@ class PipelineRunner:
 
         return branch_pipelines
 
-    def run(self, pipeline_name: str, username: str, type: str, **kwargs: Any) -> Any:
+    def run(
+        self,
+        pipeline_name: str,
+        username: str,
+        type: str,
+        project: str = "default",
+        **kwargs: Any,
+    ) -> Any:
         """
         Run a pipeline by name, dispatching to the appropriate execution method.
 
@@ -699,22 +715,27 @@ class PipelineRunner:
             pipeline_name: Name of the pipeline to run (e.g., 'pdf_indexing_pipeline', 'pdf_retrieval_pipeline')
             username: Username for metrics and logging
             type: Pipeline type - "indexing" or "retrieval"
+            project: Project name (defaults to "default")
             **kwargs: Pipeline-specific arguments
 
         Returns:
             Pipeline execution results
         """
         if type == "indexing" or type == PipelineUsage.INDEXING.value:
-            return self._run_indexing_pipeline(pipeline_name, username, **kwargs)
+            return self._run_indexing_pipeline(
+                pipeline_name, username, project, **kwargs
+            )
         elif type == "retrieval" or type == PipelineUsage.RETRIEVAL.value:
-            return self._run_retrieval_pipeline(pipeline_name, username, **kwargs)
+            return self._run_retrieval_pipeline(
+                pipeline_name, username, project, **kwargs
+            )
         else:
             raise ValueError(
                 f"Unknown pipeline type: {type}. " "Must be 'indexing' or 'retrieval'"
             )
 
     def _run_indexing_pipeline(
-        self, pipeline_name: str, username: str, **kwargs: Any
+        self, pipeline_name: str, username: str, project: str = "default", **kwargs: Any
     ) -> Any:
         """
         Execute an indexing pipeline.
@@ -722,6 +743,7 @@ class PipelineRunner:
         Args:
             pipeline_name: Name of the indexing pipeline
             username: Username for metrics and logging
+            project: Project name (defaults to "default")
             **kwargs: Pipeline-specific arguments
                 - data_path: Path to directory containing PDFs (required)
                 - sources: Optional list of specific file paths to process
@@ -826,7 +848,7 @@ class PipelineRunner:
             raise
 
     def _run_retrieval_pipeline(
-        self, pipeline_name: str, username: str, **kwargs: Any
+        self, pipeline_name: str, username: str, project: str = "default", **kwargs: Any
     ) -> Dict[str, Any]:
         """
         Execute all branches of a retrieval pipeline and aggregate results.
@@ -834,6 +856,7 @@ class PipelineRunner:
         Args:
             pipeline_name: Name of the retrieval pipeline
             username: Username for metrics and logging
+            project: Project name (defaults to "default")
             **kwargs: Must include 'query' (str)
 
         Returns:

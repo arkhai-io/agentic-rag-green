@@ -30,7 +30,8 @@ from agentic_rag.pipeline import PipelineRunner
 load_dotenv()
 
 # Configuration
-USERNAME = "your_username"
+USERNAME = "your_username_2"
+PROJECT = "demo_rag_app"  # Must match the project from indexing_pipeline_example.py
 RETRIEVAL_PIPELINE_NAME = "multi_source_retrieval"
 
 # Indexing pipelines to query (must already exist in Neo4j)
@@ -145,10 +146,11 @@ def create_retrieval_pipeline() -> Any:
     }
 
     # Build the pipeline and store it in Neo4j
-    # Username is now injected at method level for multi-tenant isolation
+    # Username and project are injected at method level for multi-tenant isolation
     pipeline = factory.build_pipeline_graphs_from_specs(
         pipeline_specs=[pipeline_spec],
         username=USERNAME,
+        project=PROJECT,
         configs=[pipeline_config],
         pipeline_types=["retrieval"],
     )
@@ -192,11 +194,13 @@ def run_retrieval_pipeline(
         enable_caching=False,
     )
 
-    # Load pipelines with username injection
-    runner.load_pipelines(pipeline_names=[RETRIEVAL_PIPELINE_NAME], username=USERNAME)
+    # Load pipelines with username and project injection
+    runner.load_pipelines(
+        pipeline_names=[RETRIEVAL_PIPELINE_NAME], username=USERNAME, project=PROJECT
+    )
 
     # Run the pipeline with the query
-    # Username is now injected at method level
+    # Username and project are injected at method level
     # Execution flow per branch:
     # 1. Embed the query (using the branch's embedding model)
     # 2. Retrieve top 5 documents from the branch's ChromaDB
@@ -207,6 +211,7 @@ def run_retrieval_pipeline(
         pipeline_name=RETRIEVAL_PIPELINE_NAME,
         username=USERNAME,
         type="retrieval",
+        project=PROJECT,
         query=query,
         ground_truth_answer=ground_truth_answer,  # Optional for grounded evaluation
         relevant_doc_ids=relevant_doc_ids or [],  # Optional for document recall

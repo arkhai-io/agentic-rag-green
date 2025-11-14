@@ -30,7 +30,8 @@ from agentic_rag.pipeline import PipelineRunner
 load_dotenv()
 
 # Configuration
-USERNAME = "your_username"
+USERNAME = "your_username_2"
+PROJECT = "demo_rag_app"  # Project name for organizing pipelines
 
 # Pipeline names for different indexing strategies
 FAST_PIPELINE = "fast_retrieval_index"
@@ -115,10 +116,11 @@ def create_indexing_pipelines() -> List:
 
     # Build both pipelines and store them in Neo4j
     # Each pipeline gets its own ChromaDB collection automatically
-    # Username is now injected at method level for multi-tenant isolation
+    # Username and project are injected at method level for multi-tenant isolation
     pipelines = factory.build_pipeline_graphs_from_specs(
         pipeline_specs=pipeline_specs,
         username=USERNAME,
+        project=PROJECT,
         configs=configs,
         pipeline_types=["indexing", "indexing"],
     )
@@ -157,20 +159,23 @@ def run_indexing_pipelines(data_directory: str) -> Dict[str, Any]:
         config=config,
     )
 
-    # Load pipelines with username injection
+    # Load pipelines with username and project injection
     runner.load_pipelines(
-        pipeline_names=[FAST_PIPELINE, SEMANTIC_PIPELINE], username=USERNAME
+        pipeline_names=[FAST_PIPELINE, SEMANTIC_PIPELINE],
+        username=USERNAME,
+        project=PROJECT,
     )
 
     results = {}
 
     # Run each indexing pipeline on the directory
-    # Username is now injected at method level
+    # Username and project are injected at method level
     for pipeline_name in [FAST_PIPELINE, SEMANTIC_PIPELINE]:
         result = runner.run(
             pipeline_name=pipeline_name,
             username=USERNAME,
             type="indexing",
+            project=PROJECT,
             data_path=data_directory,
         )
         results[pipeline_name] = result

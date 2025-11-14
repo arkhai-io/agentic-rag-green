@@ -14,6 +14,7 @@ class ComponentNode:
     version: str
     author: str
     component_config: Dict[str, Any]
+    project: str = "default"  # Project name for multi-tenant isolation
     component_type: Optional[str] = None  # e.g., "EMBEDDER.SENTENCE_TRANSFORMERS_DOC"
     pipeline_type: Optional[str] = None  # "indexing" or "retrieval"
     branch_id: Optional[str] = (
@@ -25,11 +26,11 @@ class ComponentNode:
     def __post_init__(self) -> None:
         """Generate ID and cache_key if not provided."""
         if self.id is None:
-            # Create deterministic hash from: component_name__pipeline_name__version__author__branch_id
+            # Create deterministic hash from: component_name__pipeline_name__project__version__author__branch_id
             import hashlib
             import json
 
-            combined = f"{self.component_name}__{self.pipeline_name}__{self.version}__{self.author}"
+            combined = f"{self.component_name}__{self.pipeline_name}__{self.project}__{self.version}__{self.author}"
 
             # Include branch_id if provided (for retrieval pipeline branches)
             if self.branch_id:
@@ -63,6 +64,7 @@ class ComponentNode:
             "id": self.id,
             "component_name": self.component_name,
             "pipeline_name": self.pipeline_name,
+            "project": self.project,
             "version": self.version,
             "author": self.author,
             "component_config_json": config_json,
@@ -91,6 +93,7 @@ class ComponentNode:
         return cls(
             component_name=data["component_name"],
             pipeline_name=data["pipeline_name"],
+            project=data.get("project", "default"),
             version=data["version"],
             author=data["author"],
             component_config=component_config,
@@ -144,6 +147,48 @@ class UserNode:
             "email": self.email,
             "display_name": self.display_name,
         }
+
+
+@dataclass
+class ProjectNode:
+    """Represents a project that contains pipelines."""
+
+    name: str  # Project name (e.g., "my_rag_app")
+    username: str  # Owner username
+    description: Optional[str] = None
+    id: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    def __post_init__(self) -> None:
+        """Generate ID from username and project name."""
+        if self.id is None:
+            import hashlib
+
+            # Create deterministic ID: project_{username}_{name}
+            combined = f"{self.username}__{self.name}"
+            hash_obj = hashlib.sha256(combined.encode("utf-8"))
+            self.id = f"proj_{hash_obj.hexdigest()[:12]}"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for Neo4j insertion."""
+        result = {
+            "id": self.id,
+            "name": self.name,
+            "username": self.username,
+        }
+        if self.description:
+            result["description"] = self.description
+        return result
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ProjectNode":
+        """Create ProjectNode from dictionary."""
+        return cls(
+            name=data["name"],
+            username=data["username"],
+            description=data.get("description"),
+            id=data.get("id"),
+        )
 
 
 @dataclass

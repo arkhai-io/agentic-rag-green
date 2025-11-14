@@ -31,6 +31,7 @@ from .node_types import (
     ComponentRelationship,
     DataPiece,
     ProcessedByRelationship,
+    ProjectNode,
     TransformedByRelationship,
     UserNode,
 )
@@ -48,6 +49,7 @@ __all__ = [
     "ComponentNode",
     "ComponentRelationship",
     "UserNode",
+    "ProjectNode",
     # DataPiece types (for InGate/OutGate caching)
     "DataPiece",
     "TransformedByRelationship",
