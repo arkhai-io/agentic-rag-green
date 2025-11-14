@@ -99,6 +99,16 @@ Aggregated → Reranked → Generated Answer
 
 Each branch gets the **exact same embedding model and storage path** used during indexing - automatically injected from Neo4j metadata.
 
+## Multi-Project Organization
+
+Organize pipelines into projects for better multi-tenancy:
+- **Hierarchy**: `User → Project → Pipelines` (e.g., `alice/rag_app/indexing_pipeline`)
+- **Storage**: Automatic path isolation at `data/{username}/{project}/{pipeline}/`
+- **Graph**: Components store project field for complete isolation
+- **Usage**: Simply add `project="my_app"` to factory and runner methods
+
+Example: `factory.build_pipeline_graphs_from_specs(username="alice", project="rag_app", ...)`
+
 ## Testing & Comparing Strategies
 
 This architecture enables systematic **comparison of different RAG strategies** using evaluation metrics:

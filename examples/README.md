@@ -31,20 +31,22 @@ poetry run python examples/retrieval_pipeline_example.py
 
 ### `indexing_pipeline_example.py`
 
-Two indexing strategies:
+Creates two indexing strategies in the same project:
 - **Fast**: 300 char chunks, all-MiniLM-L6-v2
 - **Semantic**: 800 char chunks, all-mpnet-base-v2
+- Uses `project="demo_rag_app"` for organization
 
 ### `retrieval_pipeline_example.py`
 
 Multi-source retrieval with evaluation:
-- Queries both indexing pipelines
-- Re-ranks results
+- Queries both indexing pipelines from the same project
+- Re-ranks results using cross-encoder
 - Generates answers via OpenRouter
 - Evaluates with BLEU, ROUGE, coherence, readability
+- **Important**: Must use same `project` as indexing pipelines
 
-## Storage
+## Storage & Organization
 
-- **Neo4j**: Pipeline graphs, metadata, lineage
-- **ChromaDB**: Vector embeddings at `./data/{username}/{pipeline_name}/`
-- **IPFS**: Document content
+- **Neo4j**: Pipeline graphs with `User → Project → Pipelines` hierarchy
+- **ChromaDB**: Vector embeddings at `./data/{username}/{project}/{pipeline_name}/`
+- **IPFS**: Document content with user-based access control
