@@ -162,7 +162,10 @@ class GraphStore:
             return [dict(r["c"]) for r in results]
 
     def get_components_by_pipeline(
-        self, pipeline_name: str, username: Optional[str] = None
+        self,
+        pipeline_name: str,
+        username: Optional[str] = None,
+        project: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Get all Component nodes for a specific pipeline.
@@ -170,13 +173,28 @@ class GraphStore:
         Args:
             pipeline_name: Name of the pipeline (e.g., 'index_1')
             username: Optional username filter for multi-tenant isolation
+            project: Optional project filter for multi-tenant isolation
 
         Returns:
             List of component node dictionaries with all properties
         """
         with self.driver.session(database=self.database) as session:
-            if username:
-                # Query with username filter for multi-tenant isolation
+            if username and project:
+                # Query with username and project filter through Project node
+                # Find components by traversing from Project or by matching project field directly
+                query = """
+                    MATCH (c:Component {pipeline_name: $pipeline_name, project: $project, author: $username})
+                    RETURN c
+                    ORDER BY c.id
+                """
+                results = session.run(
+                    query,
+                    pipeline_name=pipeline_name,
+                    username=username,
+                    project=project,
+                ).data()
+            elif username:
+                # Query with username filter only (backward compatible - searches all projects)
                 query = """
                     MATCH (c:Component {pipeline_name: $pipeline_name, author: $username})
                     RETURN c
@@ -207,28 +225,33 @@ class GraphStore:
             return result is not None
 
     def get_pipeline_components_by_hash(
-        self, pipeline_hash: str, username: str
+        self, pipeline_hash: str, username: str, project: str = "default"
     ) -> List[Dict[str, object]]:
         """
         Traverse entire pipeline graph using DFS to get all connected components.
-        Only follows paths within the same pipeline.
+        Only follows paths within the same pipeline and project.
 
         Args:
             pipeline_hash: Single pipeline name/hash to load
             username: Username to validate permissions
+            project: Project name to filter by (defaults to "default")
 
         Returns:
             List of component dictionaries with all necessary data
         """
         with self.driver.session(database=self.database) as session:
             # First find the starting component(s) owned by the user for this pipeline
+            # Traverse through Project node using FLOWS_TO: User→Project→Component
             start_query = """
-                MATCH (u:User {username: $username})-[:OWNS]->(start:Component)
+                MATCH (u:User {username: $username})-[:OWNS]->(p:Project {name: $project})-[:FLOWS_TO]->(start:Component)
                 WHERE start.pipeline_name = $pipeline_hash
                 RETURN start.id AS start_id
             """
             start_results = session.run(
-                query=start_query, pipeline_hash=pipeline_hash, username=username
+                query=start_query,
+                pipeline_hash=pipeline_hash,
+                username=username,
+                project=project,
             ).data()
 
             if not start_results:

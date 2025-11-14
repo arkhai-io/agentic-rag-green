@@ -146,6 +146,21 @@ class Config:
         """
         return self.lighthouse_api_key is not None
 
+    def get_project_path(self, username: str, project: str) -> str:
+        """
+        Get storage path for a specific user project.
+
+        Args:
+            username: Username
+            project: Project name
+
+        Returns:
+            Path in format: {agentic_root_dir}/{username}/{project}/
+        """
+        import os
+
+        return os.path.join(self.agentic_root_dir, username, project)
+
     def to_dict(self) -> dict:
         """
         Export configuration as dictionary.

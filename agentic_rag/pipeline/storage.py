@@ -11,6 +11,7 @@ from ..types import (
     GraphRelationship,
     PipelineSpec,
     PipelineType,
+    ProjectNode,
     UserNode,
     create_haystack_component,
 )
@@ -61,6 +62,7 @@ class GraphStorage:
         spec: PipelineSpec,
         connections: List[Tuple[str, str]],
         username: str,
+        project: str = "default",
         branch_id: Optional[str] = None,
     ) -> None:
         """Create graph representation of the pipeline components.
@@ -69,6 +71,7 @@ class GraphStorage:
             spec: Pipeline specification
             connections: List of (source, target) component connections
             username: Username for pipeline ownership
+            project: Project name (defaults to "default")
             branch_id: Optional branch identifier for retrieval pipeline branches
         """
 
@@ -78,6 +81,7 @@ class GraphStorage:
             node = ComponentNode(
                 component_name=component_spec.name,
                 pipeline_name=spec.name,
+                project=project,
                 version="1.0.0",
                 author=username,
                 component_config=component_spec.get_config(),
@@ -93,29 +97,47 @@ class GraphStorage:
 
         # Add/update the owning user node
         self.logger.info(
-            f"Creating pipeline graph for user '{username}', pipeline '{spec.name}'"
+            f"Creating pipeline graph for user '{username}', project '{project}', pipeline '{spec.name}'"
         )
         user_node = UserNode(username=username, display_name=username.title())
         user_dict = user_node.to_dict()
         self.graph_store.add_nodes_batch([user_dict], "User")
 
+        # Add/update the project node
+        project_node = ProjectNode(name=project, username=username)
+        project_dict = project_node.to_dict()
+        self.graph_store.add_nodes_batch([project_dict], "Project")
+
+        # Connect user to project (User -[:OWNS]-> Project)
+        self.graph_store.add_edges_batch(
+            [
+                (
+                    user_dict["id"],
+                    project_dict["id"],
+                    GraphRelationship.OWNS.value,
+                )
+            ],
+            source_label="User",
+            target_label="Project",
+        )
+
         # Add component nodes
         self.logger.debug(f"Adding {len(nodes)} component nodes to graph")
         self.graph_store.add_nodes_batch(nodes, "Component")
 
-        # Connect user to the first component in the pipeline
+        # Connect project to the first component (Project -[:FLOWS_TO]-> Component)
         if spec.components:
             first_component_id = node_id_by_name.get(spec.components[0].name)
             if first_component_id:
                 self.graph_store.add_edges_batch(
                     [
                         (
-                            user_dict["id"],
+                            project_dict["id"],
                             first_component_id,
-                            GraphRelationship.OWNS.value,
+                            GraphRelationship.FLOWS_TO.value,
                         )
                     ],
-                    source_label="User",
+                    source_label="Project",
                     target_label="Component",
                 )
 
@@ -147,6 +169,7 @@ class GraphStorage:
         self,
         spec: PipelineSpec,
         username: str = "test_user",
+        project: str = "default",
         branch_id: Optional[str] = None,
     ) -> None:
         """Build a graph representation of the pipeline specification.
@@ -154,6 +177,7 @@ class GraphStorage:
         Args:
             spec: Pipeline specification
             username: Username for pipeline ownership (defaults to "test_user")
+            project: Project name (defaults to "default")
             branch_id: Optional branch identifier for retrieval pipeline branches
         """
 
@@ -161,7 +185,7 @@ class GraphStorage:
         connections = self._determine_connections(spec.components)
 
         # Create graph representation
-        self.create_pipeline_graph(spec, connections, username, branch_id)
+        self.create_pipeline_graph(spec, connections, username, project, branch_id)
 
     def build_haystack_pipeline(self, spec: PipelineSpec) -> Any:
         """Build a Haystack pipeline from a pipeline specification."""
@@ -203,7 +227,7 @@ class GraphStorage:
         return connections
 
     def load_pipeline_by_hashes(
-        self, pipeline_hashes: List[str], username: str
+        self, pipeline_hashes: List[str], username: str, project: str = "default"
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Retrieve components for each pipeline hash from Neo4j.
@@ -211,6 +235,7 @@ class GraphStorage:
         Args:
             pipeline_hashes: List of pipeline names to load
             username: Username for permissions
+            project: Project name to filter by (defaults to "default")
 
         Returns:
             Dictionary mapping pipeline names to their component data
@@ -227,7 +252,9 @@ class GraphStorage:
 
             # Call Neo4j for this specific pipeline hash (single hash method)
             component_data_list = self.graph_store.get_pipeline_components_by_hash(
-                pipeline_hash, username  # Single pipeline hash
+                pipeline_hash,
+                username,
+                project,  # Single pipeline hash with project filter
             )
 
             print(f"   Found {len(component_data_list)} components")

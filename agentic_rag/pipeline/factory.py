@@ -100,6 +100,7 @@ class PipelineFactory:
         self,
         pipeline_specs: List[List[Dict[str, str]]],
         username: str,
+        project: str = "default",
         configs: Optional[List[Dict[str, Any]]] = None,
         pipeline_types: Optional[List[str]] = None,
     ) -> List[PipelineSpec]:
@@ -110,6 +111,7 @@ class PipelineFactory:
             pipeline_specs: List of component specifications as dicts.
                 Example: [[{"type": "CONVERTER.PDF"}, {"type": "CHUNKER.RECURSIVE"}]]
             username: Username for multi-tenant isolation
+            project: Project name (defaults to "default")
             configs: Optional list of configuration dicts for each pipeline
             pipeline_types: Optional list of pipeline types ("indexing" or "retrieval")
                 Defaults to "indexing" for all pipelines
@@ -132,7 +134,7 @@ class PipelineFactory:
             )
 
         self.logger.info(
-            f"Building {len(pipeline_specs)} pipeline graphs for user: {username}"
+            f"Building {len(pipeline_specs)} pipeline graphs for user: {username}, project: {project}"
         )
 
         pipeline_specs_list = []
@@ -149,7 +151,7 @@ class PipelineFactory:
             pipeline_name = config.get("_pipeline_name", f"pipeline_{i}")
             self.logger.debug(f"Building {pipeline_type} pipeline {i}: {pipeline_name}")
             pipeline_spec = self.build_pipeline_graph(
-                spec, pipeline_name, username, config, pipeline_type
+                spec, pipeline_name, username, project, config, pipeline_type
             )
             pipeline_specs_list.append(pipeline_spec)
 
@@ -161,6 +163,7 @@ class PipelineFactory:
         component_specs: List[Dict[str, str]],
         pipeline_name: str,
         username: str,
+        project: str = "default",
         config: Optional[Dict[str, Any]] = None,
         pipeline_type: str = "indexing",
     ) -> PipelineSpec:
@@ -172,6 +175,7 @@ class PipelineFactory:
                 Example: [{"type": "CONVERTER.PDF"}, {"type": "CHUNKER.RECURSIVE"}]
             pipeline_name: Name for the pipeline
             username: Username for multi-tenant isolation
+            project: Project name (defaults to "default")
             config: Optional configuration dict
             pipeline_type: Type of pipeline - "indexing" or "retrieval" (default: "indexing")
 
@@ -183,11 +187,11 @@ class PipelineFactory:
         # Route to appropriate builder based on pipeline type
         if pipeline_type == "indexing":
             return self._build_indexing_pipeline(
-                component_specs, pipeline_name, username, config
+                component_specs, pipeline_name, username, project, config
             )
         elif pipeline_type == "retrieval":
             return self._build_retrieval_pipeline(
-                component_specs, pipeline_name, username, config
+                component_specs, pipeline_name, username, project, config
             )
         else:
             raise ValueError(
@@ -199,6 +203,7 @@ class PipelineFactory:
         component_specs: List[Dict[str, str]],
         pipeline_name: str,
         username: str,
+        project: str,
         config: Dict[str, Any],
         branch_id: Optional[str] = None,
         pipeline_type: Optional[PipelineType] = None,
@@ -210,6 +215,7 @@ class PipelineFactory:
             component_specs: List of component specifications
             pipeline_name: Name for the pipeline
             username: Username for multi-tenant isolation
+            project: Project name
             config: Configuration dict
             branch_id: Optional branch identifier for retrieval pipeline branches
             pipeline_type: Optional pipeline type override
@@ -218,7 +224,7 @@ class PipelineFactory:
             PipelineSpec for indexing pipeline
         """
         self.logger.info(
-            f"Building indexing pipeline: {pipeline_name} for user: {username}"
+            f"Building indexing pipeline: {pipeline_name} for user: {username}, project: {project}"
         )
 
         # Parse component specifications and validate
@@ -241,7 +247,9 @@ class PipelineFactory:
                 user_config = user_config.copy()  # Don't modify original config
                 # Use agentic_root_dir from config if available
                 root_dir = self.config.agentic_root_dir if self.config else "./data"
-                user_config["root_dir"] = f"{root_dir}/{username}/{pipeline_name}"
+                user_config["root_dir"] = (
+                    f"{root_dir}/{username}/{project}/{pipeline_name}"
+                )
                 self.logger.debug(
                     f"Auto-generated root_dir for chroma_document_writer: {user_config['root_dir']}"
                 )
@@ -265,7 +273,9 @@ class PipelineFactory:
             self.logger.info(
                 f"Creating graph representation for indexing pipeline '{pipeline_name}'"
             )
-            self.graph_storage.build_pipeline_graph(pipeline_spec, username, branch_id)
+            self.graph_storage.build_pipeline_graph(
+                pipeline_spec, username, project, branch_id
+            )
         else:
             self.logger.warning("No graph store configured, pipeline graph not created")
 
@@ -293,7 +303,7 @@ class PipelineFactory:
         return indexing_pipelines
 
     def _fetch_indexing_pipeline_components(
-        self, indexing_pipelines: List[str], username: str
+        self, indexing_pipelines: List[str], username: str, project: str
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Step 2: Fetch embedder and writer components from each indexing pipeline.
@@ -303,6 +313,7 @@ class PipelineFactory:
         Args:
             indexing_pipelines: List of pipeline names to fetch components from
             username: Username for multi-tenant isolation
+            project: Project name for isolation
         """
         if not self.graph_store:
             raise RuntimeError("Cannot build retrieval pipeline without a graph store")
@@ -312,14 +323,14 @@ class PipelineFactory:
         for indexing_pipeline_name in indexing_pipelines:
             self.logger.debug(f"Querying components for: {indexing_pipeline_name}")
 
-            # Get all components for this pipeline
+            # Get all components for this pipeline with project filtering
             all_components = self.graph_store.get_components_by_pipeline(
-                pipeline_name=indexing_pipeline_name, username=username
+                pipeline_name=indexing_pipeline_name, username=username, project=project
             )
 
             if not all_components:
                 raise ValueError(
-                    f"No components found for '{indexing_pipeline_name}' (user: {username})"
+                    f"No components found for '{indexing_pipeline_name}' (user: {username}, project: {project})"
                 )
 
             # Filter for embedder and writer components (needed for retrieval)
@@ -338,11 +349,10 @@ class PipelineFactory:
             relevant_components = [c for c in [embedder, writer] if c is not None]
 
             if not relevant_components:
-                self.logger.warning(
-                    f"No embedder/writer components found for '{indexing_pipeline_name}'"
+                raise ValueError(
+                    f"No embedder/writer components found for '{indexing_pipeline_name}' in project '{project}'. "
+                    f"Make sure the indexing pipeline exists in the same project before creating a retrieval pipeline."
                 )
-                indexing_pipeline_components[indexing_pipeline_name] = []
-                continue
 
             indexing_pipeline_components[indexing_pipeline_name] = relevant_components
 
@@ -480,6 +490,7 @@ class PipelineFactory:
         component_specs: List[Dict[str, str]],
         pipeline_name: str,
         username: str,
+        project: str,
         config: Dict[str, Any],
     ) -> PipelineSpec:
         """
@@ -493,6 +504,7 @@ class PipelineFactory:
             component_specs: List of component specifications (e.g., generator)
             pipeline_name: Name for the pipeline
             username: Username for multi-tenant isolation
+            project: Project name
             config: Configuration dict with optional "_indexing_pipelines" key
 
         Returns:
@@ -505,7 +517,7 @@ class PipelineFactory:
             }
         """
         self.logger.info(
-            f"Building retrieval pipeline: {pipeline_name} for user: {username}"
+            f"Building retrieval pipeline: {pipeline_name} for user: {username}, project: {project}"
         )
 
         # Step 1: Extract indexing pipeline names
@@ -513,7 +525,7 @@ class PipelineFactory:
 
         # Step 2: Fetch embedder and writer components
         indexing_pipeline_components = self._fetch_indexing_pipeline_components(
-            indexing_pipelines, username
+            indexing_pipelines, username, project
         )
 
         # Step 3: Build component specs for each pipeline
@@ -540,6 +552,7 @@ class PipelineFactory:
                 component_specs=pipeline_spec,
                 pipeline_name=pipeline_name,
                 username=username,
+                project=project,
                 config=pipeline_config,
                 branch_id=indexing_pipeline_name,
                 pipeline_type=PipelineType.RETRIEVAL,
