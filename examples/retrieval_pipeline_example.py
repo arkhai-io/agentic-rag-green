@@ -30,7 +30,7 @@ from agentic_rag.pipeline import PipelineRunner
 load_dotenv()
 
 # Configuration
-USERNAME = "your_username"
+USERNAME = "your_username_2"
 PROJECT = "demo_rag_app"  # Must match the project from indexing_pipeline_example.py
 RETRIEVAL_PIPELINE_NAME = "multi_source_retrieval"
 

@@ -29,6 +29,16 @@ graph TB
     end
 ```
 
+## Project Hierarchy
+
+The system supports `User → Project → Pipelines` for multi-tenant organization:
+- **Graph**: `(User)-[:OWNS]->(Project)-[:FLOWS_TO]->(Component)-[:FLOWS_TO]->(Component)`
+- **Storage**: `data/{username}/{project}/{pipeline_name}/`
+- **Isolation**: Component IDs include project name, ensuring complete separation
+- **Usage**: Pass `project="my_app"` to factory and runner methods
+
+Example: `factory.build_pipeline_graphs_from_specs(username="alice", project="rag_app", ...)`
+
 ## Component Responsibilities
 
 ### 🏭 **PipelineFactory** (`factory.py`)

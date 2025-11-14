@@ -30,7 +30,7 @@ from agentic_rag.pipeline import PipelineRunner
 load_dotenv()
 
 # Configuration
-USERNAME = "your_username"
+USERNAME = "your_username_2"
 PROJECT = "demo_rag_app"  # Project name for organizing pipelines
 
 # Pipeline names for different indexing strategies
