@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import certifi
 from dotenv import load_dotenv
-from neo4j import GraphDatabase
+from neo4j import AsyncGraphDatabase, GraphDatabase
 
 if TYPE_CHECKING:
     from ..config import Config
@@ -86,6 +86,15 @@ class GraphStore:
             max_transaction_retry_time=5,
         )
 
+        # Create async driver with the same configuration
+        self.async_driver = AsyncGraphDatabase.driver(
+            self.uri,
+            auth=(self.neo4j_username, self.password),
+            ssl_context=ssl_ctx,
+            connection_timeout=10,
+            max_transaction_retry_time=5,
+        )
+
         # Verify connectivity like the working example
         try:
             self.driver.verify_connectivity()
@@ -101,11 +110,18 @@ class GraphStore:
         if cls._instance is not None:
             if hasattr(cls._instance, "driver"):
                 cls._instance.driver.close()
+            if hasattr(cls._instance, "async_driver"):
+                # Note: async_driver.close() returns a coroutine, but for testing we just close sync driver
+                pass
         cls._instance = None
         cls._initialized = False
 
     def close(self) -> None:
         self.driver.close()
+
+    async def close_async(self) -> None:
+        """Close async driver connection."""
+        await self.async_driver.close()
 
     def add_nodes_batch(
         self, nodes: List[Dict[str, object]], label: str = "Node"
@@ -117,6 +133,19 @@ class GraphStore:
                 SET n += node
             """
             session.run(query, nodes=nodes).consume()
+
+    async def add_nodes_batch_async(
+        self, nodes: List[Dict[str, object]], label: str = "Node"
+    ) -> None:
+        """Async version of add_nodes_batch."""
+        async with self.async_driver.session(database=self.database) as session:
+            query = f"""
+                UNWIND $nodes AS node
+                MERGE (n:{label} {{id: node.id}})
+                SET n += node
+            """
+            result = await session.run(query, nodes=nodes)
+            await result.consume()
 
     def add_edges_batch(
         self,
@@ -145,6 +174,34 @@ class GraphStore:
                 """
                 session.run(query, edges=edge_list)
 
+    async def add_edges_batch_async(
+        self,
+        edges: List[Tuple[str, str, str]],
+        source_label: str = "Node",
+        target_label: str = "Node",
+    ) -> None:
+        """Async version of add_edges_batch. Format: [(source_id, target_id, relationship_type)]"""
+        async with self.async_driver.session(database=self.database) as session:
+            # Group edges by relationship type and create separate queries
+            edges_by_type: Dict[str, List[Dict[str, str]]] = {}
+            for source, target, rel_type in edges:
+                if rel_type not in edges_by_type:
+                    edges_by_type[rel_type] = []
+                edges_by_type[rel_type].append({"source": source, "target": target})
+
+            # Create relationships for each type
+            for rel_type, edge_list in edges_by_type.items():
+                # Use a safe relationship name (replace special characters)
+                safe_rel_type = rel_type.replace("-", "_").replace(" ", "_").upper()
+                query = f"""
+                    UNWIND $edges AS edge
+                    MATCH (source:{source_label} {{id: edge.source}})
+                    MATCH (target:{target_label} {{id: edge.target}})
+                    MERGE (source)-[:{safe_rel_type}]->(target)
+                """
+                result = await session.run(query, edges=edge_list)
+                await result.consume()
+
     def get_component_nodes_by_ids(
         self, component_ids: List[str]
     ) -> List[Dict[str, object]]:
@@ -159,6 +216,23 @@ class GraphStore:
                 RETURN c
             """
             results = session.run(query, ids=component_ids).data()
+            return [dict(r["c"]) for r in results]
+
+    async def get_component_nodes_by_ids_async(
+        self, component_ids: List[str]
+    ) -> List[Dict[str, object]]:
+        """Async version of get_component_nodes_by_ids."""
+        if not component_ids:
+            return []
+
+        async with self.async_driver.session(database=self.database) as session:
+            query = """
+                UNWIND $ids AS id
+                MATCH (c:Component {id: id})
+                RETURN c
+            """
+            result = await session.run(query, ids=component_ids)
+            results = await result.data()
             return [dict(r["c"]) for r in results]
 
     def get_components_by_pipeline(
@@ -214,6 +288,58 @@ class GraphStore:
 
             return [dict(r["c"]) for r in results]
 
+    async def get_components_by_pipeline_async(
+        self,
+        pipeline_name: str,
+        username: Optional[str] = None,
+        project: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Async version of get_components_by_pipeline.
+
+        Get all Component nodes for a specific pipeline.
+
+        Args:
+            pipeline_name: Name of the pipeline (e.g., 'index_1')
+            username: Optional username filter for multi-tenant isolation
+            project: Optional project filter for multi-tenant isolation
+
+        Returns:
+            List of component node dictionaries with all properties
+        """
+        async with self.async_driver.session(database=self.database) as session:
+            if username and project:
+                query = """
+                    MATCH (c:Component {pipeline_name: $pipeline_name, project: $project, author: $username})
+                    RETURN c
+                    ORDER BY c.id
+                """
+                result = await session.run(
+                    query,
+                    pipeline_name=pipeline_name,
+                    username=username,
+                    project=project,
+                )
+            elif username:
+                query = """
+                    MATCH (c:Component {pipeline_name: $pipeline_name, author: $username})
+                    RETURN c
+                    ORDER BY c.id
+                """
+                result = await session.run(
+                    query, pipeline_name=pipeline_name, username=username
+                )
+            else:
+                query = """
+                    MATCH (c:Component {pipeline_name: $pipeline_name})
+                    RETURN c
+                    ORDER BY c.id
+                """
+                result = await session.run(query, pipeline_name=pipeline_name)
+
+            results = await result.data()
+            return [dict(r["c"]) for r in results]
+
     def validate_user_exists(self, username: str) -> bool:
         """Check if a user exists in Neo4j."""
         with self.driver.session(database=self.database) as session:
@@ -223,6 +349,17 @@ class GraphStore:
             """
             result = session.run(query, username=username).single()
             return result is not None
+
+    async def validate_user_exists_async(self, username: str) -> bool:
+        """Async version of validate_user_exists."""
+        async with self.async_driver.session(database=self.database) as session:
+            query = """
+                MATCH (u:User {username: $username})
+                RETURN u.id AS user_id
+            """
+            result = await session.run(query, username=username)
+            single_result = await result.single()
+            return single_result is not None
 
     def get_pipeline_components_by_hash(
         self, pipeline_hash: str, username: str, project: str = "default"
@@ -319,6 +456,106 @@ class GraphStore:
 
         return components
 
+    async def get_pipeline_components_by_hash_async(
+        self, pipeline_hash: str, username: str, project: str = "default"
+    ) -> List[Dict[str, object]]:
+        """
+        Async version of get_pipeline_components_by_hash.
+
+        Traverse entire pipeline graph using DFS to get all connected components.
+        Only follows paths within the same pipeline and project.
+
+        Args:
+            pipeline_hash: Single pipeline name/hash to load
+            username: Username to validate permissions
+            project: Project name to filter by (defaults to "default")
+
+        Returns:
+            List of component dictionaries with all necessary data
+        """
+        async with self.async_driver.session(database=self.database) as session:
+            # First find the starting component(s) owned by the user for this pipeline
+            start_query = """
+                MATCH (u:User {username: $username})-[:OWNS]->(p:Project {name: $project})-[:FLOWS_TO]->(start:Component)
+                WHERE start.pipeline_name = $pipeline_hash
+                RETURN start.id AS start_id
+            """
+            result = await session.run(
+                query=start_query,
+                pipeline_hash=pipeline_hash,
+                username=username,
+                project=project,
+            )
+            start_results = await result.data()
+
+            if not start_results:
+                return []
+
+            # Get all starting component IDs
+            start_ids = [record["start_id"] for record in start_results]
+
+            # Manual DFS traversal within the same pipeline
+            return await self._dfs_traversal_same_pipeline_async(
+                session, start_ids, pipeline_hash
+            )
+
+    async def _dfs_traversal_same_pipeline_async(
+        self, session: Any, start_ids: List[str], pipeline_hash: str
+    ) -> List[Dict[str, object]]:
+        """Async version of DFS traversal that only follows components in the same pipeline."""
+        visited = set()
+        components = []
+        stack = start_ids.copy()
+
+        while stack:
+            current_id = stack.pop()
+            if current_id in visited:
+                continue
+
+            visited.add(current_id)
+
+            # Get current node and ALL its connections
+            query = """
+                MATCH (c {id: $component_id})
+                WHERE c:Component
+
+                // Get ALL connections (don't filter by pipeline)
+                OPTIONAL MATCH (c)-[:FLOWS_TO]->(next)
+                WHERE next:Component
+
+                OPTIONAL MATCH (prev)-[:FLOWS_TO]->(c)
+                WHERE prev:Component
+
+                RETURN c,
+                       collect(DISTINCT next.id) AS next_components,
+                       collect(DISTINCT prev.id) AS prev_components,
+                       labels(c) AS node_labels
+            """
+
+            result = await session.run(
+                query, component_id=current_id, pipeline_hash=pipeline_hash
+            )
+            single_result = await result.single()
+
+            if single_result:
+                component_data = dict(single_result["c"])
+                next_components = single_result["next_components"]
+                prev_components = single_result["prev_components"]
+                node_labels = single_result["node_labels"]
+
+                # Include ALL components (allows crossing pipeline boundaries)
+                component_data["next_components"] = next_components
+                component_data["prev_components"] = prev_components
+                component_data["node_labels"] = node_labels
+                components.append(component_data)
+
+            # Only follow outgoing edges (next_components), not incoming (prev_components)
+            for next_id in next_components:
+                if next_id and next_id not in visited:
+                    stack.append(next_id)
+
+        return components
+
     def lookup_cached_transformations_batch(
         self, input_fingerprints: List[str], component_id: str, config_hash: str
     ) -> Dict[str, List[Dict[str, Any]]]:
@@ -373,6 +610,57 @@ class GraphStore:
                 component_id=component_id,
                 config_hash=config_hash,
             ).data()
+
+            # Convert to dict
+            cache_map = {}
+            for record in results:
+                cache_map[record["fp"]] = record["outputs"]
+
+            return cache_map
+
+    async def lookup_cached_transformations_batch_async(
+        self, input_fingerprints: List[str], component_id: str, config_hash: str
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Async version of lookup_cached_transformations_batch.
+
+        Look up cached transformation results for multiple inputs in one query.
+
+        Args:
+            input_fingerprints: List of input data fingerprints
+            component_id: ID of the component that did the transformation
+            config_hash: Hash of component configuration
+
+        Returns:
+            Dict mapping input_fingerprint -> list of output data dicts
+        """
+        async with self.async_driver.session(database=self.database) as session:
+            query = """
+                UNWIND $fingerprints AS fp
+                OPTIONAL MATCH (input:DataPiece {fingerprint: fp})
+                      -[t:TRANSFORMED_BY {
+                          component_id: $component_id,
+                          config_hash: $config_hash
+                      }]->
+                      (output:DataPiece)
+                WITH fp, collect({
+                    fingerprint: output.fingerprint,
+                    ipfs_hash: output.ipfs_hash,
+                    data_type: output.data_type,
+                    username: output.username
+                }) AS outputs
+                WHERE size(outputs) > 0 AND outputs[0].fingerprint IS NOT NULL
+                RETURN fp, outputs
+            """
+
+            result = await session.run(
+                query,
+                fingerprints=input_fingerprints,
+                component_id=component_id,
+                config_hash=config_hash,
+            )
+
+            results = await result.data()
 
             # Convert to dict
             cache_map = {}
@@ -455,3 +743,76 @@ class GraphStore:
                 username=username,
                 processing_time_ms=processing_time_ms,
             ).consume()
+
+    async def store_transformation_batch_async(
+        self,
+        input_fingerprint: str,
+        input_ipfs_hash: str,
+        input_data_type: str,
+        output_records: List[Dict[str, Any]],
+        component_id: str,
+        component_name: str,
+        config_hash: str,
+        username: str,
+        processing_time_ms: Optional[int] = None,
+    ) -> None:
+        """
+        Async version of store_transformation_batch.
+
+        Store a 1→N transformation in Neo4j.
+
+        Args:
+            input_fingerprint: Fingerprint of input data
+            input_ipfs_hash: IPFS hash of input data
+            input_data_type: Type of input data
+            output_records: List of {fingerprint, ipfs_hash, data_type}
+            component_id: ID of component that did transformation
+            component_name: Name of component
+            config_hash: Hash of component config
+            username: User who owns this data
+            processing_time_ms: Optional processing time
+        """
+        async with self.async_driver.session(database=self.database) as session:
+            query = """
+                // Create or get input DataPiece
+                MERGE (input:DataPiece {fingerprint: $input_fingerprint})
+                ON CREATE SET
+                    input.ipfs_hash = $input_ipfs_hash,
+                    input.data_type = $input_data_type,
+                    input.username = $username,
+                    input.created_at = datetime()
+
+                // Create output DataPieces and edges
+                WITH input
+                UNWIND $output_records AS output
+                MERGE (out:DataPiece {fingerprint: output.fingerprint})
+                ON CREATE SET
+                    out.ipfs_hash = output.ipfs_hash,
+                    out.data_type = output.data_type,
+                    out.username = $username,
+                    out.created_at = datetime()
+
+                // Create TRANSFORMED_BY edge
+                MERGE (input)-[t:TRANSFORMED_BY {
+                    component_id: $component_id,
+                    config_hash: $config_hash
+                }]->(out)
+                ON CREATE SET
+                    t.component_name = $component_name,
+                    t.processing_time_ms = $processing_time_ms,
+                    t.created_at = datetime()
+            """
+
+            result = await session.run(
+                query,
+                input_fingerprint=input_fingerprint,
+                input_ipfs_hash=input_ipfs_hash,
+                input_data_type=input_data_type,
+                output_records=output_records,
+                component_id=component_id,
+                component_name=component_name,
+                config_hash=config_hash,
+                username=username,
+                processing_time_ms=processing_time_ms,
+            )
+            await result.consume()

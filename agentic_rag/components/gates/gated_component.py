@@ -1,5 +1,7 @@
 """Generic wrapper that adds caching gates to any Haystack component."""
 
+import asyncio
+import contextvars
 import time
 from typing import Any, Dict, List, Optional
 
@@ -20,6 +22,10 @@ class GatedComponent:
     3. Stores results to cache (OutGate)
     4. Merges cached + new results
 
+    Supports both synchronous and asynchronous component execution.
+    If the wrapped component has a `run_async` method, it will be used for async calls.
+    Otherwise, the sync `run` method will be executed in a thread pool.
+
     Example:
         >>> chunker = MarkdownAwareChunker(chunk_size=500)
         >>> gated_chunker = GatedComponent(
@@ -30,9 +36,12 @@ class GatedComponent:
         ...     username="alice"
         ... )
         >>>
-        >>> # Use like normal component
+        >>> # Use like normal component (sync)
         >>> result = gated_chunker.run(documents=[doc1, doc2, doc3])
         >>> # Automatically cached!
+        >>>
+        >>> # Or use async
+        >>> result = await gated_chunker.run_async(documents=[doc1, doc2, doc3])
     """
 
     def __init__(
@@ -166,6 +175,149 @@ class GatedComponent:
                     # Store: input → its outputs (handles both 1→1 and 1→N)
                     if single_output_items:
                         self.outgate.store(
+                            input_data=input_item,
+                            output_data=single_output_items,
+                            component_config=component_config,
+                        )
+                except Exception as e:
+                    self.logger.warning(f"Failed to cache item: {e}")
+                    pass  # Continue with next item
+
+        end_time = time.time()
+
+        # Log metrics
+        self.metrics.log_component_execution(
+            component_name=self.component_name,
+            component_id=self.component_id,
+            start_time=start_time,
+            end_time=end_time,
+            input_count=len(input_items),
+            output_count=len(output_items),
+            cache_hits=cache_hits,
+            cache_misses=cache_misses,
+        )
+
+        # Return component output
+        typed_output: Dict[str, Any] = component_output
+        return typed_output
+
+    async def run_async(self, **kwargs: Any) -> Dict[str, Any]:
+        """
+        Asynchronously run component with caching.
+
+        This is the async version of the `run` method with the same caching flow:
+        1. Check cache with InGate
+        2. If all inputs cached → skip component, return cached metadata
+        3. If some/all uncached → run component on uncached, store results
+        4. Return component output
+
+        Args:
+            **kwargs: Component inputs (e.g., documents=[...], query="...", etc.)
+
+        Returns:
+            Component output
+        """
+        start_time = time.time()
+
+        # Extract component config
+        component_config = self._extract_component_config()
+
+        # Find the main input parameter
+        input_param, input_items = self._extract_input_data(kwargs)
+
+        # If no cacheable inputs, just run normally
+        if not input_items:
+            # Check if component supports async (Haystack pattern)
+            if getattr(self.component, "__haystack_supports_async__", False):
+                result: Dict[str, Any] = await self.component.run_async(**kwargs)
+            else:
+                # Fallback to sync run in executor with context preservation
+                loop = asyncio.get_running_loop()
+                ctx = contextvars.copy_context()
+                result = await loop.run_in_executor(
+                    None, lambda: ctx.run(lambda: self.component.run(**kwargs))
+                )
+            return result
+
+        # Check cache with InGate (async operation)
+        cache_result = await self.ingate.check_cache_batch_async(
+            input_items=input_items,
+            component_config=component_config,
+        )
+
+        cached_items = cache_result["cached"]
+        uncached_items = cache_result["uncached"]
+        cache_hits = len(cached_items)
+        cache_misses = len(uncached_items)
+
+        # If everything is cached, skip component execution
+        if not uncached_items:
+            end_time = time.time()
+            self.metrics.log_component_execution(
+                component_name=self.component_name,
+                component_id=self.component_id,
+                start_time=start_time,
+                end_time=end_time,
+                input_count=len(input_items),
+                output_count=len(cached_items),
+                cache_hits=cache_hits,
+                cache_misses=cache_misses,
+            )
+            return self._format_cached_output(cached_items)
+
+        # Run component on uncached items only
+        if len(uncached_items) < len(input_items) and input_param is not None:
+            # Partial cache - run only on uncached
+            kwargs_uncached = kwargs.copy()
+            kwargs_uncached[input_param] = uncached_items
+            if getattr(self.component, "__haystack_supports_async__", False):
+                component_output = await self.component.run_async(**kwargs_uncached)
+            else:
+                loop = asyncio.get_running_loop()
+                ctx = contextvars.copy_context()
+                component_output = await loop.run_in_executor(
+                    None, lambda: ctx.run(lambda: self.component.run(**kwargs_uncached))
+                )
+        else:
+            # No cache - run on all
+            if getattr(self.component, "__haystack_supports_async__", False):
+                component_output = await self.component.run_async(**kwargs)
+            else:
+                loop = asyncio.get_running_loop()
+                ctx = contextvars.copy_context()
+                component_output = await loop.run_in_executor(
+                    None, lambda: ctx.run(lambda: self.component.run(**kwargs))
+                )
+
+        # Extract outputs
+        output_items = self._extract_output_data(component_output)
+
+        # Store new results to cache - process each item individually to maintain correct mappings
+        if uncached_items:
+            for input_item in uncached_items:
+                try:
+                    # Run component on single item to get its specific outputs
+                    kwargs_single = kwargs.copy()
+                    if input_param:
+                        kwargs_single[input_param] = [input_item]
+
+                    if getattr(self.component, "__haystack_supports_async__", False):
+                        single_output = await self.component.run_async(**kwargs_single)
+                    else:
+                        loop = asyncio.get_running_loop()
+                        ctx = contextvars.copy_context()
+                        single_output = await loop.run_in_executor(
+                            None,
+                            lambda: ctx.run(
+                                lambda: self.component.run(**kwargs_single)
+                            ),
+                        )
+
+                    single_output_items = self._extract_output_data(single_output)
+
+                    # Store: input → its outputs (handles both 1→1 and 1→N) - use async version
+                    if single_output_items:
+                        await self.outgate.store_async(
                             input_data=input_item,
                             output_data=single_output_items,
                             component_config=component_config,

@@ -147,6 +147,87 @@ class OutGate:
             "output_ipfs_hashes": [r["ipfs_hash"] for r in output_records],
         }
 
+    async def store_async(
+        self,
+        input_data: Any,
+        output_data: List[Any],
+        component_config: Dict[str, Any],
+        processing_time_ms: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Async version of store.
+
+        Store transformation: input → component → outputs.
+
+        Args:
+            input_data: Input to component
+            output_data: List of outputs (even if just one)
+            component_config: Component configuration
+            processing_time_ms: Processing time
+
+        Returns:
+            {
+                "input_fingerprint": str,
+                "output_fingerprints": List[str],
+                "output_ipfs_hashes": List[str]
+            }
+        """
+        # Hash config
+        config_hash = self.hash_config(component_config)
+
+        # Fingerprint input
+        input_fingerprint = self.fingerprint_data(input_data)
+
+        # Process all outputs in batch
+        output_records = []
+        for output_item in output_data:
+            # Upload to IPFS
+            ipfs_hash = self._upload_to_ipfs(output_item)
+
+            # Fingerprint output
+            output_fingerprint = self.fingerprint_data(output_item)
+
+            # Detect data type
+            data_type = type(output_item).__name__
+
+            output_records.append(
+                {
+                    "fingerprint": output_fingerprint,
+                    "ipfs_hash": ipfs_hash,
+                    "data_type": data_type,
+                }
+            )
+
+        # Store everything to Neo4j in one batch (async)
+        self.logger.info(
+            f"Storing {len(output_records)} outputs to cache (async, component: {self.component_name})"
+        )
+        self.logger.info(
+            f"Storage details: input_fp={input_fingerprint[:20]}..., "
+            f"component_id={self.component_id}, config_hash={config_hash}"
+        )
+        await self.graph_store.store_transformation_batch_async(
+            input_fingerprint=input_fingerprint,
+            input_ipfs_hash=self._upload_to_ipfs(input_data),
+            input_data_type=type(input_data).__name__,
+            output_records=output_records,
+            component_id=self.component_id,
+            component_name=self.component_name,
+            config_hash=config_hash,
+            username=self.username,
+            processing_time_ms=processing_time_ms,
+        )
+
+        self.logger.debug(
+            f"✓ Stored to Neo4j (async) with input fingerprint: {input_fingerprint}"
+        )
+
+        return {
+            "input_fingerprint": input_fingerprint,
+            "output_fingerprints": [r["fingerprint"] for r in output_records],
+            "output_ipfs_hashes": [r["ipfs_hash"] for r in output_records],
+        }
+
     def fingerprint_data(self, data: Any) -> str:
         """Create SHA256 fingerprint of data."""
         data_str = self._serialize_for_fingerprint(data)

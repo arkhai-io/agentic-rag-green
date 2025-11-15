@@ -160,6 +160,91 @@ class InGate:
             "fingerprints": fingerprints,
         }
 
+    async def check_cache_batch_async(
+        self, input_items: List[Any], component_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Async version of check_cache_batch.
+
+        Check cache for multiple items and split into cached vs uncached.
+
+        Args:
+            input_items: List of data items to check
+            component_config: Component configuration dict
+
+        Returns:
+            Dictionary with:
+            {
+                "cached": [(item, cached_result), ...],
+                "uncached": [item, ...],
+                "fingerprints": {item_idx: fingerprint, ...}
+            }
+        """
+        # Hash the config once
+        config_hash = self.hash_config(component_config)
+
+        # Fingerprint all inputs
+        fingerprints = {}
+        for idx, item in enumerate(input_items):
+            fingerprints[idx] = self.fingerprint_data(item)
+
+        # Batch lookup in Neo4j (async)
+        fingerprint_list = list(fingerprints.values())
+        cache_map = await self.graph_store.lookup_cached_transformations_batch_async(
+            input_fingerprints=fingerprint_list,
+            component_id=self.component_id,
+            config_hash=config_hash,
+        )
+
+        # DEBUG: Log cache lookup results
+        self.logger.info(
+            f"🔍 Cache lookup (async): queried {len(fingerprint_list)} fingerprints, "
+            f"found {len(cache_map)} cached results (component_id={self.component_id})"
+        )
+
+        # Split into cached vs uncached
+        cached = []
+        uncached = []
+
+        cache_hits = 0
+        for idx, item in enumerate(input_items):
+            fp = fingerprints[idx]
+            if fp in cache_map:
+                # Found cached result
+                cached_metadata = cache_map[fp]
+
+                if self.retrieve_from_ipfs:
+                    try:
+                        cached_data = []
+                        for output_meta in cached_metadata:
+                            ipfs_hash = output_meta["ipfs_hash"]
+                            data_type = output_meta.get("data_type")
+                            data = self._retrieve_from_ipfs(ipfs_hash, data_type)
+                            cached_data.append(data)
+                        cached.append((item, cached_data))
+                        cache_hits += 1
+                    except (ConnectionError, Exception) as e:
+                        # IPFS retrieval failed - treat as cache miss
+                        self.logger.warning(f"IPFS retrieval failed for {fp}: {e}")
+                        uncached.append(item)
+                else:
+                    # Just return metadata (fingerprints + IPFS hashes)
+                    cached.append((item, cached_metadata))
+                    cache_hits += 1
+            else:
+                # No cache, needs processing
+                uncached.append(item)
+
+        self.logger.info(
+            f"Cache check (async): {cache_hits} hits, {len(uncached)} misses (total: {len(input_items)})"
+        )
+
+        return {
+            "cached": cached,
+            "uncached": uncached,
+            "fingerprints": fingerprints,
+        }
+
     def fingerprint_data(self, data: Any) -> str:
         """
         Create stable fingerprint hash for data.
