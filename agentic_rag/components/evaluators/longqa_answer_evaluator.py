@@ -177,6 +177,84 @@ class LongQAAnswerEvaluator:
 
         return {"eval_data": eval_data}
 
+    @component.output_types(eval_data=Dict[str, Any])  # type: ignore[misc]
+    async def run_async(
+        self,
+        query: str,
+        replies: Optional[List[str]] = None,
+        eval_data: Optional[Dict[str, Any]] = None,
+        ground_truth_answer: Optional[str] = None,
+        relevant_doc_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Async version of run.
+
+        Run LongQA answer quality evaluation asynchronously.
+
+        Args:
+            query: User query
+            replies: Generated answers
+            eval_data: Evaluation dict from previous evaluator (optional)
+            ground_truth_answer: Passed through (not required for this evaluator)
+            relevant_doc_ids: Passed through (not used by this evaluator)
+
+        Returns:
+            Dict with single key 'eval_data' containing all results
+        """
+        # Initialize or update eval_data
+        if eval_data is None:
+            eval_data = {
+                "query": query,
+                "answer": replies[0] if replies else None,
+                "ground_truth_answer": ground_truth_answer,
+                "relevant_doc_ids": relevant_doc_ids,
+                "eval_metrics": {},
+            }
+        else:
+            if "query" not in eval_data:
+                eval_data["query"] = query
+            if "answer" not in eval_data and replies:
+                eval_data["answer"] = replies[0]
+            if ground_truth_answer and "ground_truth_answer" not in eval_data:
+                eval_data["ground_truth_answer"] = ground_truth_answer
+            if relevant_doc_ids and "relevant_doc_ids" not in eval_data:
+                eval_data["relevant_doc_ids"] = relevant_doc_ids
+
+        if "eval_metrics" not in eval_data:
+            eval_data["eval_metrics"] = {}
+
+        answer = eval_data.get("answer")
+
+        # Skip evaluation if no answer
+        if not answer:
+            return {"eval_data": eval_data}
+
+        # Evaluate with LongQA (async)
+        try:
+            prompt = self.prompt_template.format(question=query, answer=answer)
+            scores = await self._call_llm_async(prompt)
+
+            # Average across dimensions for overall score (normalize to 0-1)
+            avg_score = sum(scores.values()) / len(scores) if scores else 0.0
+            normalized_avg = avg_score / 5.0  # Normalize from 1-5 scale to 0-1
+
+            # Add metrics to eval_data
+            eval_data["eval_metrics"]["longqa_answer"] = {
+                "score": normalized_avg,
+                "raw_score": avg_score,
+                "dimension_scores": {k: v / 5.0 for k, v in scores.items()},
+                "raw_dimension_scores": scores,
+                "type": "llm_judge",
+            }
+
+        except Exception as e:
+            print(f"Error in LongQA answer evaluation: {e}")
+            eval_data["eval_metrics"]["longqa_answer_error"] = {
+                "error": str(e),
+                "type": "llm_judge",
+            }
+
+        return {"eval_data": eval_data}
+
     def _call_llm(self, prompt: str) -> Dict[str, int]:
         """Call LLM via OpenRouter API."""
         headers = {
@@ -187,6 +265,37 @@ class LongQAAnswerEvaluator:
         }
 
         response = self.client.post(
+            f"{self.base_url}/chat/completions",
+            headers=headers,
+            json={
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.0,
+            },
+        )
+        response.raise_for_status()
+
+        content = response.json()["choices"][0]["message"]["content"]
+
+        # Parse JSON response
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
+
+        parsed: Dict[str, int] = json.loads(content)
+        return parsed
+
+    async def _call_llm_async(self, prompt: str) -> Dict[str, int]:
+        """Async version of _call_llm."""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/arkhai-io/agentic-rag",
+            "X-Title": "Agentic RAG",
+        }
+
+        response = await self.async_client.post(
             f"{self.base_url}/chat/completions",
             headers=headers,
             json={

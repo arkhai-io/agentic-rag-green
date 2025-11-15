@@ -175,6 +175,85 @@ class MORQAFaithfulnessEvaluator:
 
         return {"eval_data": eval_data}
 
+    @component.output_types(eval_data=Dict[str, Any])  # type: ignore[misc]
+    async def run_async(
+        self,
+        query: str,
+        replies: Optional[List[str]] = None,
+        eval_data: Optional[Dict[str, Any]] = None,
+        ground_truth_answer: Optional[str] = None,
+        relevant_doc_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Async version of run.
+
+        Evaluate answer faithfulness asynchronously.
+
+        Args:
+            query: User query
+            replies: Generated answers
+            eval_data: Evaluation dict from previous evaluator (optional)
+            ground_truth_answer: Reference answer (required for evaluation)
+            relevant_doc_ids: Passed through (not used by this evaluator)
+
+        Returns:
+            Dict with single key 'eval_data' containing all results
+        """
+        # Initialize or update eval_data
+        if eval_data is None:
+            eval_data = {
+                "query": query,
+                "answer": replies[0] if replies else None,
+                "ground_truth_answer": ground_truth_answer,
+                "relevant_doc_ids": relevant_doc_ids,
+                "eval_metrics": {},
+            }
+        else:
+            if "query" not in eval_data:
+                eval_data["query"] = query
+            if "answer" not in eval_data and replies:
+                eval_data["answer"] = replies[0]
+            if ground_truth_answer and "ground_truth_answer" not in eval_data:
+                eval_data["ground_truth_answer"] = ground_truth_answer
+            if relevant_doc_ids and "relevant_doc_ids" not in eval_data:
+                eval_data["relevant_doc_ids"] = relevant_doc_ids
+
+        if "eval_metrics" not in eval_data:
+            eval_data["eval_metrics"] = {}
+
+        answer = eval_data.get("answer")
+        ground_truth = eval_data.get("ground_truth_answer")
+
+        # Skip evaluation if no ground truth or answer
+        if not ground_truth or not answer:
+            return {"eval_data": eval_data}
+
+        # Evaluate faithfulness (async)
+        try:
+            prompt = self.prompt_template.format(
+                question=query,
+                answer=answer,
+                gold_answer=ground_truth,
+            )
+            result = await self._call_llm_async(prompt)
+
+            # Add metrics to eval_data
+            eval_data["eval_metrics"]["morqa_faithfulness"] = {
+                "score": result.get("atomic_faithfulness", 0.0),
+                "facts": result.get("facts", []),
+                "critical_errors": result.get("critical_errors", []),
+                "summary": result.get("summary", ""),
+                "type": "llm_judge",
+            }
+
+        except Exception as e:
+            print(f"Error in MORQA faithfulness evaluation: {e}")
+            eval_data["eval_metrics"]["morqa_faithfulness_error"] = {
+                "error": str(e),
+                "type": "llm_judge",
+            }
+
+        return {"eval_data": eval_data}
+
     def _call_llm(self, prompt: str) -> Dict[str, Any]:
         """Call LLM via OpenRouter API."""
         headers = {
@@ -185,6 +264,37 @@ class MORQAFaithfulnessEvaluator:
         }
 
         response = self.client.post(
+            f"{self.base_url}/chat/completions",
+            headers=headers,
+            json={
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.0,
+            },
+        )
+        response.raise_for_status()
+
+        content = response.json()["choices"][0]["message"]["content"]
+
+        # Parse JSON response
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
+
+        parsed: Dict[str, Any] = json.loads(content)
+        return parsed
+
+    async def _call_llm_async(self, prompt: str) -> Dict[str, Any]:
+        """Async version of _call_llm."""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/arkhai-io/agentic-rag",
+            "X-Title": "Agentic RAG",
+        }
+
+        response = await self.async_client.post(
             f"{self.base_url}/chat/completions",
             headers=headers,
             json={

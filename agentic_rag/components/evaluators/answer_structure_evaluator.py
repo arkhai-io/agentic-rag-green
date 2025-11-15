@@ -208,6 +208,131 @@ class AnswerStructureEvaluator:
 
         return {"eval_data": eval_data}
 
+    @component.output_types(eval_data=Dict[str, Any])  # type: ignore[misc]
+    async def run_async(
+        self,
+        query: str,
+        replies: Optional[List[str]] = None,
+        eval_data: Optional[Dict[str, Any]] = None,
+        ground_truth_answer: Optional[str] = None,
+        relevant_doc_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Async version of run.
+
+        Evaluate answer structure and organization asynchronously.
+
+        Args:
+            query: The question being answered
+            replies: List of generated answers (uses first one)
+            eval_data: Existing evaluation data to extend
+            ground_truth_answer: Ground truth (not used for this metric)
+            relevant_doc_ids: Relevant doc IDs (not used for this metric)
+
+        Returns:
+            Dictionary with eval_data containing structure metrics
+        """
+        # Initialize or extend eval_data
+        if eval_data is None:
+            eval_data = {
+                "query": query,
+                "answer": replies[0] if replies else "",
+                "eval_metrics": {},
+            }
+        else:
+            # Preserve existing data
+            if "query" not in eval_data:
+                eval_data["query"] = query
+            if "answer" not in eval_data and replies:
+                eval_data["answer"] = replies[0]
+            if "eval_metrics" not in eval_data:
+                eval_data["eval_metrics"] = {}
+
+        # Skip if no answer
+        if not replies or not replies[0].strip():
+            return {"eval_data": eval_data}
+
+        answer = replies[0]
+
+        try:
+            # Format prompt
+            prompt = self.prompt_template.format(question=query, answer=answer)
+
+            # Call LLM (async)
+            response = await self.async_client.post(
+                f"{self.base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.0,
+                },
+            )
+            response.raise_for_status()
+
+            content = response.json()["choices"][0]["message"]["content"]
+
+            # Parse JSON response
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+
+            result = json.loads(content)
+
+            # Extract scores
+            organization = result.get("organization", 3)
+            formatting = result.get("formatting", 3)
+            hierarchy = result.get("hierarchy", 3)
+            clarity = result.get("clarity", 3)
+            summary = result.get("summary", "")
+
+            # Compute average score (1-5 scale, convert to 0-1)
+            avg_score = (organization + formatting + hierarchy + clarity) / 4
+            normalized_score = (avg_score - 1) / 4  # Convert 1-5 to 0-1
+
+            # Add to eval_metrics
+            eval_data["eval_metrics"]["answer_structure_organization"] = {
+                "score": (organization - 1) / 4,
+                "raw_score": organization,
+                "type": "reference_free",
+            }
+            eval_data["eval_metrics"]["answer_structure_formatting"] = {
+                "score": (formatting - 1) / 4,
+                "raw_score": formatting,
+                "type": "reference_free",
+            }
+            eval_data["eval_metrics"]["answer_structure_hierarchy"] = {
+                "score": (hierarchy - 1) / 4,
+                "raw_score": hierarchy,
+                "type": "reference_free",
+            }
+            eval_data["eval_metrics"]["answer_structure_clarity"] = {
+                "score": (clarity - 1) / 4,
+                "raw_score": clarity,
+                "type": "reference_free",
+            }
+            eval_data["eval_metrics"]["answer_structure_overall"] = {
+                "score": normalized_score,
+                "raw_score": avg_score,
+                "summary": summary,
+                "type": "reference_free",
+            }
+
+        except Exception as e:
+            print(f"Error evaluating answer structure: {e}")
+            # Add error to metadata
+            eval_data["eval_metrics"]["answer_structure_error"] = {
+                "score": 0,
+                "raw_score": 0,
+                "error": str(e),
+                "type": "reference_free",
+            }
+
+        return {"eval_data": eval_data}
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize component to dict."""
         return default_to_dict(  # type: ignore[no-any-return]
