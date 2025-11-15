@@ -32,8 +32,8 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Set, Tuple
 
+import httpx
 import numpy as np
-import requests  # type: ignore[import-untyped]
 from haystack import component, default_from_dict, default_to_dict
 from sentence_transformers import SentenceTransformer
 
@@ -80,6 +80,7 @@ class FactMatchingEvaluator:
         similarity_threshold: float = 0.75,
         matching_strategy: Literal["greedy", "optimal"] = "greedy",
         config: Optional["Config"] = None,
+        timeout: float = 60.0,
     ):
         """Initialize fact matching metric.
 
@@ -91,6 +92,7 @@ class FactMatchingEvaluator:
             similarity_threshold: Minimum cosine similarity to consider a match
             matching_strategy: 'greedy' or 'optimal' (Hungarian algorithm)
             config: Config object with API key (required if api_key not provided)
+            timeout: Timeout for API requests in seconds (default: 60.0)
         """
         # Priority: explicit api_key > config object
         if config is not None:
@@ -110,6 +112,11 @@ class FactMatchingEvaluator:
         self.similarity_threshold = similarity_threshold
         self.matching_strategy = matching_strategy
         self.embedding_model_name = embedding_model
+        self.timeout = timeout
+
+        # Create sync and async HTTP clients
+        self.client = httpx.Client(timeout=timeout)
+        self.async_client = httpx.AsyncClient(timeout=timeout)
 
         # Load prompt template
         prompt_path = Path(__file__).parent / "prompts" / "fact_extraction.txt"
@@ -213,7 +220,7 @@ class FactMatchingEvaluator:
             "X-Title": "Agentic RAG",
         }
 
-        response = requests.post(
+        response = self.client.post(
             f"{self.base_url}/chat/completions",
             headers=headers,
             json={
@@ -221,7 +228,6 @@ class FactMatchingEvaluator:
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.0,
             },
-            timeout=60,
         )
         response.raise_for_status()
 
@@ -397,6 +403,7 @@ class FactMatchingEvaluator:
             base_url=self.base_url,
             similarity_threshold=self.similarity_threshold,
             matching_strategy=self.matching_strategy,
+            timeout=self.timeout,
         )
 
     @classmethod

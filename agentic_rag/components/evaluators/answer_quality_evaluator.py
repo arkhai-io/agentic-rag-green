@@ -31,7 +31,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-import requests  # type: ignore[import-untyped]
+import httpx
 from haystack import component, default_from_dict, default_to_dict
 
 if TYPE_CHECKING:
@@ -77,6 +77,7 @@ class AnswerQualityEvaluator:
         model: str = "anthropic/claude-3.5-sonnet",
         base_url: str = "https://openrouter.ai/api/v1",
         config: Optional["Config"] = None,
+        timeout: float = 60.0,
     ):
         """
         Initialize answer quality evaluator.
@@ -86,6 +87,7 @@ class AnswerQualityEvaluator:
             model: Model identifier on OpenRouter
             base_url: OpenRouter API base URL
             config: Config object with API key (required if api_key not provided)
+            timeout: Timeout for API requests in seconds (default: 60.0)
         """
         # Priority: explicit api_key > config object
         if config is not None:
@@ -102,6 +104,11 @@ class AnswerQualityEvaluator:
 
         self.model = model
         self.base_url = base_url
+        self.timeout = timeout
+
+        # Create sync and async HTTP clients
+        self.client = httpx.Client(timeout=timeout)
+        self.async_client = httpx.AsyncClient(timeout=timeout)
 
         # Load prompt template
         prompt_path = Path(__file__).parent / "prompts" / "answer_quality.txt"
@@ -206,6 +213,102 @@ class AnswerQualityEvaluator:
 
         return {"eval_data": eval_data}
 
+    @component.output_types(eval_data=Dict[str, Any])  # type: ignore[misc]
+    async def run_async(
+        self,
+        query: str,
+        replies: Optional[List[str]] = None,
+        eval_data: Optional[Dict[str, Any]] = None,
+        ground_truth_answer: Optional[str] = None,
+        relevant_doc_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Async version of run.
+
+        Run answer quality evaluation using LLM-as-a-judge asynchronously.
+
+        Args:
+            query: User query
+            replies: Generated answers
+            eval_data: Evaluation dict from previous evaluator (optional)
+            ground_truth_answer: Expected/reference answer (required for evaluation)
+            relevant_doc_ids: Passed through (not used by this evaluator)
+
+        Returns:
+            Dict with single key 'eval_data' containing all results
+        """
+        # Initialize or update eval_data
+        if eval_data is None:
+            eval_data = {
+                "query": query,
+                "answer": replies[0] if replies else None,
+                "ground_truth_answer": ground_truth_answer,
+                "relevant_doc_ids": relevant_doc_ids,
+                "eval_metrics": {},
+            }
+        else:
+            # Update with current data if not already set
+            if "query" not in eval_data:
+                eval_data["query"] = query
+            if "answer" not in eval_data and replies:
+                eval_data["answer"] = replies[0]
+            if ground_truth_answer and "ground_truth_answer" not in eval_data:
+                eval_data["ground_truth_answer"] = ground_truth_answer
+            if relevant_doc_ids and "relevant_doc_ids" not in eval_data:
+                eval_data["relevant_doc_ids"] = relevant_doc_ids
+
+        # Ensure eval_metrics exists
+        if "eval_metrics" not in eval_data:
+            eval_data["eval_metrics"] = {}
+
+        answer = eval_data.get("answer")
+        ground_truth = eval_data.get("ground_truth_answer")
+
+        # Skip evaluation if no ground truth or answer
+        if not ground_truth or not answer:
+            return {"eval_data": eval_data}
+
+        # Evaluate answer quality
+        try:
+            result = await self._evaluate_answer_async(
+                question=query,
+                model_answer=answer,
+                gold_answer=ground_truth,
+            )
+
+            # Add metrics to eval_data
+            eval_data["eval_metrics"]["answer_quality_completeness"] = {
+                "score": result["completeness_score"] / 5.0,  # Normalize to 0-1
+                "raw_score": result["completeness_score"],
+                "reasoning": result["completeness_reasoning"],
+                "key_missing_info": result["key_missing_info"],
+                "type": "llm_judge",
+            }
+
+            eval_data["eval_metrics"]["answer_quality_correctness"] = {
+                "score": result["correctness_score"] / 5.0,  # Normalize to 0-1
+                "raw_score": result["correctness_score"],
+                "reasoning": result["correctness_reasoning"],
+                "factual_errors": result["factual_errors"],
+                "type": "llm_judge",
+            }
+
+            eval_data["eval_metrics"]["answer_quality_overall"] = {
+                "score": result["overall_score"] / 5.0,  # Normalize to 0-1
+                "raw_score": result["overall_score"],
+                "type": "llm_judge",
+            }
+
+        except Exception as e:
+            print(f"Error evaluating answer quality: {e}")
+            # Add error to metadata instead of failing
+            eval_data["eval_metrics"]["answer_quality_error"] = {
+                "error": str(e),
+                "type": "llm_judge",
+            }
+
+        return {"eval_data": eval_data}
+
     def _call_llm(self, prompt: str) -> Dict[str, Any]:
         """
         Call LLM via OpenRouter API.
@@ -223,7 +326,7 @@ class AnswerQualityEvaluator:
             "X-Title": "Agentic RAG",
         }
 
-        response = requests.post(
+        response = self.client.post(
             f"{self.base_url}/chat/completions",
             headers=headers,
             json={
@@ -231,7 +334,47 @@ class AnswerQualityEvaluator:
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.0,  # Deterministic for consistency
             },
-            timeout=60,
+        )
+        response.raise_for_status()
+
+        content = response.json()["choices"][0]["message"]["content"]
+
+        # Parse JSON response
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
+
+        parsed: Dict[str, Any] = json.loads(content)
+        return parsed
+
+    async def _call_llm_async(self, prompt: str) -> Dict[str, Any]:
+        """
+        Async version of _call_llm.
+
+        Call LLM via OpenRouter API asynchronously.
+
+        Args:
+            prompt: Formatted prompt string
+
+        Returns:
+            Dictionary with evaluation results
+        """
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/arkhai-io/agentic-rag",
+            "X-Title": "Agentic RAG",
+        }
+
+        response = await self.async_client.post(
+            f"{self.base_url}/chat/completions",
+            headers=headers,
+            json={
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.0,  # Deterministic for consistency
+            },
         )
         response.raise_for_status()
 
@@ -298,6 +441,60 @@ class AnswerQualityEvaluator:
                 "factual_errors": [],
             }
 
+    async def _evaluate_answer_async(
+        self, question: str, model_answer: str, gold_answer: str
+    ) -> Dict[str, Any]:
+        """
+        Async version of _evaluate_answer.
+
+        Evaluate a single answer for completeness and correctness.
+
+        Args:
+            question: The question being answered
+            model_answer: The model's generated answer
+            gold_answer: The reference (gold) answer
+
+        Returns:
+            Dictionary with scores and reasoning
+        """
+        prompt = self.prompt_template.format(
+            question=question,
+            model_answer=model_answer,
+            gold_answer=gold_answer,
+        )
+
+        try:
+            result = await self._call_llm_async(prompt)
+
+            # Validate scores are in range
+            completeness = max(1, min(5, result.get("completeness_score", 3)))
+            correctness = max(1, min(5, result.get("correctness_score", 3)))
+
+            # Overall quality is average of the two dimensions
+            overall = (completeness + correctness) / 2.0
+
+            return {
+                "completeness_score": completeness,
+                "correctness_score": correctness,
+                "overall_score": overall,
+                "completeness_reasoning": result.get("completeness_reasoning", ""),
+                "correctness_reasoning": result.get("correctness_reasoning", ""),
+                "key_missing_info": result.get("key_missing_info", []),
+                "factual_errors": result.get("factual_errors", []),
+            }
+
+        except Exception as e:
+            print(f"Error evaluating answer: {e}")
+            return {
+                "completeness_score": 0,
+                "correctness_score": 0,
+                "overall_score": 0.0,
+                "completeness_reasoning": f"Error: {str(e)}",
+                "correctness_reasoning": f"Error: {str(e)}",
+                "key_missing_info": [],
+                "factual_errors": [],
+            }
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize component to dict."""
         return default_to_dict(  # type: ignore[no-any-return]
@@ -305,6 +502,7 @@ class AnswerQualityEvaluator:
             api_key=self.api_key,
             model=self.model,
             base_url=self.base_url,
+            timeout=self.timeout,
         )
 
     @classmethod

@@ -21,7 +21,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-import requests  # type: ignore[import-untyped]
+import httpx
 from haystack import component, default_from_dict, default_to_dict
 
 if TYPE_CHECKING:
@@ -60,6 +60,7 @@ class LongQAAnswerEvaluator:
         model: str = "anthropic/claude-3.5-sonnet",
         base_url: str = "https://openrouter.ai/api/v1",
         config: Optional["Config"] = None,
+        timeout: float = 60.0,
     ):
         """Initialize LongQA answer evaluation metric.
 
@@ -68,6 +69,7 @@ class LongQAAnswerEvaluator:
             model: Model identifier on OpenRouter
             base_url: OpenRouter API base URL
             config: Config object with API key (required if api_key not provided)
+            timeout: Timeout for API requests in seconds (default: 60.0)
         """
         # Priority: explicit api_key > config object
         if config is not None:
@@ -84,6 +86,11 @@ class LongQAAnswerEvaluator:
 
         self.model = model
         self.base_url = base_url
+        self.timeout = timeout
+
+        # Create sync and async HTTP clients
+        self.client = httpx.Client(timeout=timeout)
+        self.async_client = httpx.AsyncClient(timeout=timeout)
 
         # Load prompt template
         prompt_path = Path(__file__).parent / "prompts" / "longqa_answer.txt"
@@ -179,7 +186,7 @@ class LongQAAnswerEvaluator:
             "X-Title": "Agentic RAG",
         }
 
-        response = requests.post(
+        response = self.client.post(
             f"{self.base_url}/chat/completions",
             headers=headers,
             json={
@@ -187,7 +194,6 @@ class LongQAAnswerEvaluator:
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.0,
             },
-            timeout=60,
         )
         response.raise_for_status()
 
@@ -209,6 +215,7 @@ class LongQAAnswerEvaluator:
             api_key=self.api_key,
             model=self.model,
             base_url=self.base_url,
+            timeout=self.timeout,
         )
 
     @classmethod

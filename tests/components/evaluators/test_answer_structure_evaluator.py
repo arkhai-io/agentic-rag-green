@@ -33,7 +33,7 @@ class TestAnswerStructureEvaluator:
             )
             assert evaluator.api_key == "env-key"
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_successful_evaluation(self, mock_post):
         """Test successful answer structure evaluation."""
         # Mock API response
@@ -77,7 +77,7 @@ class TestAnswerStructureEvaluator:
             eval_data["eval_metrics"]["answer_structure_organization"]["raw_score"] == 5
         )
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_evaluation_with_existing_eval_data(self, mock_post):
         """Test that evaluation extends existing eval_data."""
         mock_response = MagicMock()
@@ -112,7 +112,7 @@ class TestAnswerStructureEvaluator:
         # Check that new metrics are added
         assert "answer_structure_overall" in result["eval_data"]["eval_metrics"]
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_empty_reply(self, mock_post):
         """Test handling of empty reply."""
         evaluator = AnswerStructureEvaluator(api_key="test-key")
@@ -125,7 +125,7 @@ class TestAnswerStructureEvaluator:
             "eval_metrics", {}
         )
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_error_handling(self, mock_post):
         """Test error handling when API call fails."""
         mock_post.side_effect = Exception("API Error")
@@ -147,7 +147,7 @@ class TestAnswerStructureEvaluator:
             "error" in result["eval_data"]["eval_metrics"]["answer_structure_overall"]
         )
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_json_parsing_with_markdown(self, mock_post):
         """Test JSON parsing when response contains markdown code blocks."""
         mock_response = MagicMock()

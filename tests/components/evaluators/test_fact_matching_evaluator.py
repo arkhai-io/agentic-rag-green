@@ -57,7 +57,7 @@ class TestFactMatchingEvaluator:
         assert len(evaluator.prompt_template) > 0
         assert "atomic facts" in evaluator.prompt_template
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     @patch("sentence_transformers.SentenceTransformer")
     def test_run_with_ground_truth(self, mock_transformer, mock_post):
         """Test fact matching evaluation with ground truth."""
@@ -103,7 +103,7 @@ class TestFactMatchingEvaluator:
         assert "gold_facts" in fact_matching
         assert fact_matching["type"] == "llm_judge"
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     @patch("sentence_transformers.SentenceTransformer")
     def test_greedy_matching_strategy(self, mock_transformer, mock_post):
         """Test greedy matching strategy."""
@@ -133,7 +133,7 @@ class TestFactMatchingEvaluator:
 
         assert "fact_matching" in result["eval_data"]["eval_metrics"]
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     @patch("sentence_transformers.SentenceTransformer")
     def test_optimal_matching_strategy(self, mock_transformer, mock_post):
         """Test optimal (Hungarian) matching strategy."""
@@ -187,7 +187,7 @@ class TestFactMatchingEvaluator:
 
         assert "fact_matching" not in result["eval_data"]["eval_metrics"]
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_api_call_with_correct_headers(self, mock_post):
         """Test that API is called with correct headers."""
         mock_response = MagicMock()
@@ -210,7 +210,7 @@ class TestFactMatchingEvaluator:
         assert json_data["model"] == "openai/gpt-4"
         assert json_data["temperature"] == 0.0
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_json_parsing_with_code_blocks(self, mock_post):
         """Test JSON parsing from responses with code blocks."""
         mock_response = MagicMock()
@@ -231,7 +231,7 @@ class TestFactMatchingEvaluator:
 
         assert facts == ["Fact 1", "Fact 2"]
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     @patch("sentence_transformers.SentenceTransformer")
     def test_error_handling_in_api_call(self, mock_transformer, mock_post):
         """Test error handling when API call fails."""

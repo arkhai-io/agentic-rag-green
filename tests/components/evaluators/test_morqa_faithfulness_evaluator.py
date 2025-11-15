@@ -46,7 +46,7 @@ class TestMORQAFaithfulnessEvaluator:
         assert "atomic" in evaluator.prompt_template.lower()
         assert "faithfulness" in evaluator.prompt_template.lower()
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_run_with_ground_truth(self, mock_post):
         """Test evaluation with ground truth."""
         # Mock LLM response
@@ -97,7 +97,7 @@ class TestMORQAFaithfulnessEvaluator:
         assert len(morqa_metric["facts"]) == 2
         assert len(morqa_metric["critical_errors"]) == 0
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_run_with_critical_errors(self, mock_post):
         """Test evaluation that identifies critical errors."""
         # Mock LLM response with critical errors
@@ -135,7 +135,7 @@ class TestMORQAFaithfulnessEvaluator:
         assert len(morqa_metric["critical_errors"]) == 1
         assert "wrong_dose" in morqa_metric["critical_errors"]
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_run_with_eval_data_from_previous_evaluator(self, mock_post):
         """Test evaluation with existing eval_data."""
         mock_response = MagicMock()
@@ -203,7 +203,7 @@ class TestMORQAFaithfulnessEvaluator:
 
         assert "morqa_faithfulness" not in result["eval_data"]["eval_metrics"]
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_api_call_with_correct_headers(self, mock_post):
         """Test that API is called with correct headers."""
         mock_response = MagicMock()
@@ -242,7 +242,7 @@ class TestMORQAFaithfulnessEvaluator:
         assert json_data["model"] == "openai/gpt-4"
         assert json_data["temperature"] == 0.0
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_json_parsing_with_code_blocks(self, mock_post):
         """Test JSON parsing from responses with code blocks."""
         mock_response = MagicMock()
@@ -277,7 +277,7 @@ class TestMORQAFaithfulnessEvaluator:
         metric = result["eval_data"]["eval_metrics"]["morqa_faithfulness"]
         assert metric["score"] == 1.0
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_error_handling_in_api_call(self, mock_post):
         """Test error handling when API call fails."""
         mock_post.side_effect = Exception("API Error")
@@ -294,7 +294,7 @@ class TestMORQAFaithfulnessEvaluator:
         error_metric = result["eval_data"]["eval_metrics"]["morqa_faithfulness_error"]
         assert "API Error" in error_metric["error"]
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_fact_label_categories(self, mock_post):
         """Test all fact label categories."""
         # Mock response with all label types
