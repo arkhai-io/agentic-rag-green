@@ -113,7 +113,7 @@ class InGate:
 
         # DEBUG: Log cache lookup results
         self.logger.info(
-            f"🔍 Cache lookup: queried {len(fingerprint_list)} fingerprints, "
+            f"Cache lookup: queried {len(fingerprint_list)} fingerprints, "
             f"found {len(cache_map)} cached results (component_id={self.component_id})"
         )
 
@@ -198,7 +198,7 @@ class InGate:
 
         # DEBUG: Log cache lookup results
         self.logger.info(
-            f"🔍 Cache lookup (async): queried {len(fingerprint_list)} fingerprints, "
+            f"Cache lookup (async): queried {len(fingerprint_list)} fingerprints, "
             f"found {len(cache_map)} cached results (component_id={self.component_id})"
         )
 
@@ -219,7 +219,9 @@ class InGate:
                         for output_meta in cached_metadata:
                             ipfs_hash = output_meta["ipfs_hash"]
                             data_type = output_meta.get("data_type")
-                            data = self._retrieve_from_ipfs(ipfs_hash, data_type)
+                            data = await self._retrieve_from_ipfs_async(
+                                ipfs_hash, data_type
+                            )
                             cached_data.append(data)
                         cached.append((item, cached_data))
                         cache_hits += 1
@@ -313,6 +315,15 @@ class InGate:
         from haystack import Document
 
         text = self.ipfs_client.retrieve_text(ipfs_hash)
+        return Document(content=text)
+
+    async def _retrieve_from_ipfs_async(
+        self, ipfs_hash: str, data_type: Optional[str] = None
+    ) -> Any:
+        """Async version of _retrieve_from_ipfs."""
+        from haystack import Document
+
+        text = await self.ipfs_client.retrieve_text_async(ipfs_hash)
         return Document(content=text)
 
     def _serialize_for_fingerprint(self, data: Any) -> str:

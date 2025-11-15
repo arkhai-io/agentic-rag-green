@@ -34,14 +34,14 @@ Example: `factory.build_pipeline_graphs_from_specs(username="alice", project="ra
 
 ## Component Responsibilities
 
-### 🏭 **PipelineFactory** (`factory.py`)
+### **PipelineFactory** (`factory.py`)
 **Purpose**: Creates and validates pipeline specifications
 - Parses component specifications from dictionaries
 - Validates component types and configurations
 - Creates `PipelineSpec` objects
 - Delegates to `GraphStorage` for storage
 
-### 💾 **GraphStorage** (`storage.py`)
+### **GraphStorage** (`storage.py`)
 **Purpose**: Handles all pipeline operations and Neo4j storage
 - **Graph Operations**: Stores pipeline components and relationships
 - **Component Logic**: Handles substitutions (e.g., writer → retriever)

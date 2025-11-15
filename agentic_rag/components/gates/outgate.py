@@ -122,7 +122,7 @@ class OutGate:
             f"Storing {len(output_records)} outputs to cache (component: {self.component_name})"
         )
         self.logger.info(
-            f"💾 Storage details: input_fp={input_fingerprint[:20]}..., "
+            f"Storage details: input_fp={input_fingerprint[:20]}..., "
             f"component_id={self.component_id}, config_hash={config_hash}"
         )
         self.graph_store.store_transformation_batch(
@@ -138,7 +138,7 @@ class OutGate:
         )
 
         self.logger.debug(
-            f"✓ Stored to Neo4j with input fingerprint: {input_fingerprint}"
+            f"Stored to Neo4j with input fingerprint: {input_fingerprint}"
         )
 
         return {
@@ -181,8 +181,8 @@ class OutGate:
         # Process all outputs in batch
         output_records = []
         for output_item in output_data:
-            # Upload to IPFS
-            ipfs_hash = self._upload_to_ipfs(output_item)
+            # Upload to IPFS (async)
+            ipfs_hash = await self._upload_to_ipfs_async(output_item)
 
             # Fingerprint output
             output_fingerprint = self.fingerprint_data(output_item)
@@ -208,7 +208,7 @@ class OutGate:
         )
         await self.graph_store.store_transformation_batch_async(
             input_fingerprint=input_fingerprint,
-            input_ipfs_hash=self._upload_to_ipfs(input_data),
+            input_ipfs_hash=await self._upload_to_ipfs_async(input_data),
             input_data_type=type(input_data).__name__,
             output_records=output_records,
             component_id=self.component_id,
@@ -219,7 +219,7 @@ class OutGate:
         )
 
         self.logger.debug(
-            f"✓ Stored to Neo4j (async) with input fingerprint: {input_fingerprint}"
+            f"Stored to Neo4j (async) with input fingerprint: {input_fingerprint}"
         )
 
         return {
@@ -272,11 +272,36 @@ class OutGate:
             result = self.ipfs_client.upload_any(data)
             ipfs_hash: str = result["Hash"]
             self.logger.debug(
-                f"📤 IPFS upload successful: CID={ipfs_hash}, Size={result.get('Size', 'unknown')}"
+                f"IPFS upload successful: CID={ipfs_hash}, Size={result.get('Size', 'unknown')}"
             )
             return ipfs_hash
         except Exception as e:
-            self.logger.error(f"❌ IPFS upload failed: {type(e).__name__}: {str(e)}")
+            self.logger.error(f"IPFS upload failed: {type(e).__name__}: {str(e)}")
+            raise
+
+    async def _upload_to_ipfs_async(self, data: Any) -> str:
+        """
+        Async version of _upload_to_ipfs.
+
+        Upload data to IPFS via Lighthouse and return CID.
+
+        Args:
+            data: Any data type (Document, dict, str, bytes, etc.)
+
+        Returns:
+            IPFS CID (hash)
+        """
+        try:
+            result = await self.ipfs_client.upload_any_async(data)
+            ipfs_hash: str = result["Hash"]
+            self.logger.debug(
+                f"IPFS upload successful (async): CID={ipfs_hash}, Size={result.get('Size', 'unknown')}"
+            )
+            return ipfs_hash
+        except Exception as e:
+            self.logger.error(
+                f"IPFS upload failed (async): {type(e).__name__}: {str(e)}"
+            )
             raise
 
     def _serialize_for_fingerprint(self, data: Any) -> str:
