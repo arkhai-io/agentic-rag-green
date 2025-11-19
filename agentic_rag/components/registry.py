@@ -213,6 +213,20 @@ class ComponentRegistry:
             )
         )
 
+        # Qdrant Retrievers
+        self.register_component(
+            ComponentSpec(
+                name="qdrant_embedding_retriever",
+                component_type=ComponentType.RETRIEVER,
+                haystack_class="haystack_integrations.components.retrievers.qdrant.QdrantEmbeddingRetriever",
+                input_types=[DataType.LIST_FLOAT],
+                output_types=[DataType.LIST_DOCUMENT],
+                pipeline_usage=PipelineUsage.RETRIEVAL,
+                dependencies=[],  # Document store will be passed during component creation
+                default_config={"top_k": 10},
+            )
+        )
+
         # Rankers
         self.register_component(
             ComponentSpec(
@@ -296,6 +310,22 @@ class ComponentRegistry:
                 pipeline_usage=PipelineUsage.INDEXING,
                 dependencies=[],
                 default_config={"root_dir": "."},
+                parallelizable=True,
+            )
+        )
+
+        self.register_component(
+            ComponentSpec(
+                name="qdrant_document_writer",
+                component_type=ComponentType.WRITER,
+                haystack_class="haystack.components.writers.DocumentWriter",
+                input_types=[DataType.LIST_DOCUMENT],
+                output_types=[
+                    DataType.DICT
+                ],  # Returns metadata about written documents
+                pipeline_usage=PipelineUsage.INDEXING,
+                dependencies=[],
+                default_config={"root_dir": ".", "embedding_dim": 768},
                 parallelizable=True,
             )
         )

@@ -17,6 +17,8 @@ dependencies = [
     "sentence-transformers>=2.0.0",
     # Required for Chroma document store
     "chroma-haystack>=0.16.0",
+    # Required for Qdrant document store (local + remote async support)
+    "qdrant-haystack>=4.0.0",
     # Required for OpenAI components
     "openai>=1.0.0",
     # Required for Marker PDF conversion

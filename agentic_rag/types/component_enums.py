@@ -35,6 +35,7 @@ class RETRIEVER(Enum):
     """Document retrieval components."""
 
     CHROMA_EMBEDDING = "chroma_embedding_retriever"
+    QDRANT_EMBEDDING = "qdrant_embedding_retriever"
 
 
 class RANKER(Enum):
@@ -55,12 +56,14 @@ class WRITER(Enum):
     """Document writing/indexing components."""
 
     CHROMA_DOCUMENT_WRITER = "chroma_document_writer"
+    QDRANT_DOCUMENT_WRITER = "qdrant_document_writer"
 
 
 class DOCUMENT_STORE(Enum):
     """Document storage components."""
 
     CHROMA = "chroma_document_store"
+    QDRANT = "qdrant_document_store"
 
 
 class EvaluationMode(Enum):

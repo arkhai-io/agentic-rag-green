@@ -20,6 +20,11 @@ COMPONENT_SUBSTITUTIONS: Dict[str, ComponentSubstitution] = {
         preserve_config=False,
         name_suffix="retriever",
     ),
+    "qdrant_document_writer": ComponentSubstitution(
+        target_component="qdrant_embedding_retriever",
+        preserve_config=False,
+        name_suffix="retriever",
+    ),
 }
 
 
