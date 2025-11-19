@@ -50,7 +50,7 @@ class TestAnswerQualityEvaluator:
         assert "COMPLETENESS" in evaluator.prompt_template
         assert "CORRECTNESS" in evaluator.prompt_template
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_run_with_ground_truth(self, mock_post):
         """Test evaluation with ground truth answer."""
         # Mock API response
@@ -110,7 +110,7 @@ class TestAnswerQualityEvaluator:
         assert "reasoning" in metrics["answer_quality_completeness"]
         assert "reasoning" in metrics["answer_quality_correctness"]
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_run_with_eval_data_from_previous_evaluator(self, mock_post):
         """Test that evaluator can receive eval_data from previous evaluator."""
         # Mock API response
@@ -193,7 +193,7 @@ class TestAnswerQualityEvaluator:
         assert "answer_quality_completeness" not in eval_data["eval_metrics"]
         assert "answer_quality_correctness" not in eval_data["eval_metrics"]
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_api_call_with_correct_headers(self, mock_post):
         """Test that API is called with correct headers and parameters."""
         mock_response = MagicMock()
@@ -246,7 +246,7 @@ class TestAnswerQualityEvaluator:
         assert json_data["temperature"] == 0.0
         assert "messages" in json_data
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_json_parsing_with_code_blocks(self, mock_post):
         """Test that JSON is correctly parsed from responses with code blocks."""
         # Mock response with JSON in code blocks
@@ -288,7 +288,7 @@ class TestAnswerQualityEvaluator:
             eval_data["eval_metrics"]["answer_quality_completeness"]["score"] == 4 / 5.0
         )
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_error_handling_in_api_call(self, mock_post):
         """Test that API errors are handled gracefully."""
         # Mock API error
@@ -320,7 +320,7 @@ class TestAnswerQualityEvaluator:
             in eval_data["eval_metrics"]["answer_quality_completeness"]["reasoning"]
         )
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_score_validation(self, mock_post):
         """Test that scores are validated to be in 1-5 range."""
         # Mock response with out-of-range scores
@@ -392,7 +392,7 @@ class TestAnswerQualityEvaluator:
         assert evaluator.model == "openai/gpt-4"
         assert evaluator.base_url == "https://example.com"
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_metadata_preservation(self, mock_post):
         """Test that metadata like key_missing_info and factual_errors are preserved."""
         mock_response = MagicMock()

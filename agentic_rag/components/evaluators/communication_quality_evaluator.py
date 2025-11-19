@@ -20,7 +20,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-import requests  # type: ignore[import-untyped]
+import httpx
 from haystack import component, default_from_dict, default_to_dict
 
 if TYPE_CHECKING:
@@ -45,6 +45,7 @@ class CommunicationQualityEvaluator:
         model: str = "anthropic/claude-3.5-sonnet",
         base_url: str = "https://openrouter.ai/api/v1",
         config: Optional["Config"] = None,
+        timeout: float = 60.0,
     ):
         """Initialize communication quality evaluation metric.
 
@@ -53,6 +54,7 @@ class CommunicationQualityEvaluator:
             model: Model identifier on OpenRouter
             base_url: OpenRouter API base URL
             config: Config object with API key (required if api_key not provided)
+            timeout: Timeout for API requests in seconds (default: 60.0)
         """
         # Priority: explicit api_key > config object
         if config is not None:
@@ -68,6 +70,11 @@ class CommunicationQualityEvaluator:
             )
         self.model = model
         self.base_url = base_url
+        self.timeout = timeout
+
+        # Create sync and async HTTP clients
+        self.client = httpx.Client(timeout=timeout)
+        self.async_client = httpx.AsyncClient(timeout=timeout)
 
         # Load prompt template
         prompt_path = Path(__file__).parent / "prompts" / "communication_quality.txt"
@@ -121,7 +128,7 @@ class CommunicationQualityEvaluator:
             prompt = self.prompt_template.format(question=query, answer=answer)
 
             # Call LLM
-            response = requests.post(
+            response = self.client.post(
                 f"{self.base_url}/chat/completions",
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
@@ -132,7 +139,124 @@ class CommunicationQualityEvaluator:
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.0,
                 },
-                timeout=60,
+            )
+            response.raise_for_status()
+
+            content = response.json()["choices"][0]["message"]["content"]
+
+            # Parse JSON response
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+
+            result = json.loads(content)
+
+            # Extract scores
+            tone = result.get("tone_appropriateness", 3)
+            professionalism = result.get("professionalism", 3)
+            bias = result.get("bias_and_fairness", 3)
+
+            # Compute average score (1-5 scale, convert to 0-1)
+            avg_score = (tone + professionalism + bias) / 3
+            normalized_avg = (avg_score - 1) / 4  # Convert 1-5 to 0-1
+
+            # Add to eval_metrics
+            eval_data["eval_metrics"]["communication_quality_tone"] = {
+                "score": (tone - 1) / 4,
+                "raw_score": tone,
+                "type": "reference_free",
+            }
+            eval_data["eval_metrics"]["communication_quality_professionalism"] = {
+                "score": (professionalism - 1) / 4,
+                "raw_score": professionalism,
+                "type": "reference_free",
+            }
+            eval_data["eval_metrics"]["communication_quality_bias"] = {
+                "score": (bias - 1) / 4,
+                "raw_score": bias,
+                "type": "reference_free",
+            }
+            eval_data["eval_metrics"]["communication_quality_overall"] = {
+                "score": normalized_avg,
+                "raw_score": avg_score,
+                "type": "reference_free",
+            }
+
+        except Exception as e:
+            print(f"Error evaluating communication quality: {e}")
+            # On error, add zero scores
+            for dimension in ["tone", "professionalism", "bias", "overall"]:
+                eval_data["eval_metrics"][f"communication_quality_{dimension}"] = {
+                    "score": 0.0,
+                    "raw_score": 0,
+                    "error": str(e),
+                    "type": "reference_free",
+                }
+
+        return {"eval_data": eval_data}
+
+    @component.output_types(eval_data=Dict[str, Any])  # type: ignore[misc]
+    async def run_async(
+        self,
+        query: str,
+        replies: Optional[List[str]] = None,
+        eval_data: Optional[Dict[str, Any]] = None,
+        ground_truth_answer: Optional[str] = None,
+        relevant_doc_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Async version of run.
+
+        Evaluate communication quality asynchronously.
+
+        Args:
+            query: The question being answered
+            replies: List of generated answers (uses first one)
+            eval_data: Existing evaluation data to extend
+            ground_truth_answer: Ground truth (not used for this metric)
+            relevant_doc_ids: Relevant doc IDs (not used for this metric)
+
+        Returns:
+            Dictionary with eval_data containing communication quality metrics
+        """
+        # Initialize or extend eval_data
+        if eval_data is None:
+            eval_data = {
+                "query": query,
+                "answer": replies[0] if replies else "",
+                "eval_metrics": {},
+            }
+        else:
+            # Preserve existing data
+            if "query" not in eval_data:
+                eval_data["query"] = query
+            if "answer" not in eval_data and replies:
+                eval_data["answer"] = replies[0]
+            if "eval_metrics" not in eval_data:
+                eval_data["eval_metrics"] = {}
+
+        # Skip if no answer
+        if not replies or not replies[0].strip():
+            return {"eval_data": eval_data}
+
+        answer = replies[0]
+
+        try:
+            # Format prompt
+            prompt = self.prompt_template.format(question=query, answer=answer)
+
+            # Call LLM (async)
+            response = await self.async_client.post(
+                f"{self.base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.0,
+                },
             )
             response.raise_for_status()
 
@@ -197,6 +321,7 @@ class CommunicationQualityEvaluator:
             api_key=self.api_key,
             model=self.model,
             base_url=self.base_url,
+            timeout=self.timeout,
         )
 
     @classmethod

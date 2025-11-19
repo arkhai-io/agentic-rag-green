@@ -32,8 +32,8 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Set, Tuple
 
+import httpx
 import numpy as np
-import requests  # type: ignore[import-untyped]
 from haystack import component, default_from_dict, default_to_dict
 from sentence_transformers import SentenceTransformer
 
@@ -80,6 +80,7 @@ class FactMatchingEvaluator:
         similarity_threshold: float = 0.75,
         matching_strategy: Literal["greedy", "optimal"] = "greedy",
         config: Optional["Config"] = None,
+        timeout: float = 60.0,
     ):
         """Initialize fact matching metric.
 
@@ -91,6 +92,7 @@ class FactMatchingEvaluator:
             similarity_threshold: Minimum cosine similarity to consider a match
             matching_strategy: 'greedy' or 'optimal' (Hungarian algorithm)
             config: Config object with API key (required if api_key not provided)
+            timeout: Timeout for API requests in seconds (default: 60.0)
         """
         # Priority: explicit api_key > config object
         if config is not None:
@@ -110,6 +112,11 @@ class FactMatchingEvaluator:
         self.similarity_threshold = similarity_threshold
         self.matching_strategy = matching_strategy
         self.embedding_model_name = embedding_model
+        self.timeout = timeout
+
+        # Create sync and async HTTP clients
+        self.client = httpx.Client(timeout=timeout)
+        self.async_client = httpx.AsyncClient(timeout=timeout)
 
         # Load prompt template
         prompt_path = Path(__file__).parent / "prompts" / "fact_extraction.txt"
@@ -204,6 +211,89 @@ class FactMatchingEvaluator:
 
         return {"eval_data": eval_data}
 
+    @component.output_types(eval_data=Dict[str, Any])  # type: ignore[misc]
+    async def run_async(
+        self,
+        query: str,
+        replies: Optional[List[str]] = None,
+        eval_data: Optional[Dict[str, Any]] = None,
+        ground_truth_answer: Optional[str] = None,
+        relevant_doc_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Async version of run.
+
+        Evaluate answer using fact extraction and semantic matching asynchronously.
+
+        Args:
+            query: User query
+            replies: Generated answers
+            eval_data: Evaluation dict from previous evaluator (optional)
+            ground_truth_answer: Expected/reference answer (required for evaluation)
+            relevant_doc_ids: Passed through (not used by this evaluator)
+
+        Returns:
+            Dict with single key 'eval_data' containing all results
+        """
+        # Initialize or update eval_data
+        if eval_data is None:
+            eval_data = {
+                "query": query,
+                "answer": replies[0] if replies else None,
+                "ground_truth_answer": ground_truth_answer,
+                "relevant_doc_ids": relevant_doc_ids,
+                "eval_metrics": {},
+            }
+        else:
+            if "query" not in eval_data:
+                eval_data["query"] = query
+            if "answer" not in eval_data and replies:
+                eval_data["answer"] = replies[0]
+            if ground_truth_answer and "ground_truth_answer" not in eval_data:
+                eval_data["ground_truth_answer"] = ground_truth_answer
+            if relevant_doc_ids and "relevant_doc_ids" not in eval_data:
+                eval_data["relevant_doc_ids"] = relevant_doc_ids
+
+        if "eval_metrics" not in eval_data:
+            eval_data["eval_metrics"] = {}
+
+        answer = eval_data.get("answer")
+        ground_truth = eval_data.get("ground_truth_answer")
+
+        # Skip evaluation if no ground truth or answer
+        if not ground_truth or not answer:
+            return {"eval_data": eval_data}
+
+        # Evaluate with fact matching (async)
+        try:
+            # Extract facts from both answers (async)
+            model_facts = await self._extract_facts_async(query, answer, "model")
+            gold_facts = await self._extract_facts_async(query, ground_truth, "gold")
+
+            # Match facts (sync - just computation, no I/O)
+            matching_result = self._match_facts(model_facts, gold_facts)
+
+            # Add metrics to eval_data
+            eval_data["eval_metrics"]["fact_matching"] = {
+                "score": matching_result["f1"],
+                "precision": matching_result["precision"],
+                "recall": matching_result["recall"],
+                "model_facts": model_facts,
+                "gold_facts": gold_facts,
+                "num_matches": len(matching_result["matches"]),
+                "num_unmatched_model": len(matching_result["unmatched_model"]),
+                "num_unmatched_gold": len(matching_result["unmatched_gold"]),
+                "type": "llm_judge",
+            }
+
+        except Exception as e:
+            print(f"Error in fact matching evaluation: {e}")
+            eval_data["eval_metrics"]["fact_matching_error"] = {
+                "error": str(e),
+                "type": "llm_judge",
+            }
+
+        return {"eval_data": eval_data}
+
     def _call_llm(self, prompt: str) -> Dict[str, Any]:
         """Call LLM via OpenRouter API to extract facts."""
         headers = {
@@ -213,7 +303,7 @@ class FactMatchingEvaluator:
             "X-Title": "Agentic RAG",
         }
 
-        response = requests.post(
+        response = self.client.post(
             f"{self.base_url}/chat/completions",
             headers=headers,
             json={
@@ -221,7 +311,37 @@ class FactMatchingEvaluator:
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.0,
             },
-            timeout=60,
+        )
+        response.raise_for_status()
+
+        content = response.json()["choices"][0]["message"]["content"]
+
+        # Parse JSON response
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
+
+        parsed: Dict[str, Any] = json.loads(content)
+        return parsed
+
+    async def _call_llm_async(self, prompt: str) -> Dict[str, Any]:
+        """Async version of _call_llm."""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/arkhai-io/agentic-rag",
+            "X-Title": "Agentic RAG",
+        }
+
+        response = await self.async_client.post(
+            f"{self.base_url}/chat/completions",
+            headers=headers,
+            json={
+                "model": self.llm_model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.0,
+            },
         )
         response.raise_for_status()
 
@@ -246,6 +366,24 @@ class FactMatchingEvaluator:
 
         try:
             result = self._call_llm(prompt)
+            facts: List[str] = result.get("facts", [])
+            return facts
+        except Exception as e:
+            print(f"Error extracting facts from {answer_type} answer: {e}")
+            return []
+
+    async def _extract_facts_async(
+        self, question: str, answer: str, answer_type: str
+    ) -> List[str]:
+        """Async version of _extract_facts."""
+        prompt = self.prompt_template.format(
+            question=question,
+            answer=answer,
+            answer_type=answer_type.upper(),
+        )
+
+        try:
+            result = await self._call_llm_async(prompt)
             facts: List[str] = result.get("facts", [])
             return facts
         except Exception as e:
@@ -397,6 +535,7 @@ class FactMatchingEvaluator:
             base_url=self.base_url,
             similarity_threshold=self.similarity_threshold,
             matching_strategy=self.matching_strategy,
+            timeout=self.timeout,
         )
 
     @classmethod

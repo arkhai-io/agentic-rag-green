@@ -2,7 +2,7 @@
 
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .data_types import ComponentType, DataType, PipelineUsage
 
@@ -41,21 +41,96 @@ class ComponentSpec:
         return self.runtime_config if self.runtime_config else self.default_config
 
 
-def _create_chroma_document_store(root_dir: str = ".") -> Any:
-    """Create a ChromaDocumentStore with local persistence."""
+def _create_chroma_document_store(
+    root_dir: str = ".",
+    host: Optional[str] = None,
+    port: Optional[int] = None,
+    collection_name: Optional[str] = None,
+) -> Any:
+    """Create a ChromaDocumentStore with local or remote persistence.
+
+    Args:
+        root_dir: Directory for local persistence (used if host/port not provided)
+        host: Optional ChromaDB server host for async support (e.g., "localhost")
+        port: Optional ChromaDB server port for async support (e.g., 8000)
+        collection_name: Optional collection name for isolation (important for remote)
+
+    Returns:
+        ChromaDocumentStore configured for local or remote connection
+    """
     try:
         from haystack_integrations.document_stores.chroma import ChromaDocumentStore
 
-        # Create data/chroma directory if it doesn't exist
-        chroma_path = os.path.join(root_dir, "data", "chroma")
-        os.makedirs(chroma_path, exist_ok=True)
-
-        # Initialize ChromaDocumentStore with local persistence
-        # This matches the Haystack documentation pattern
-        return ChromaDocumentStore(persist_path=chroma_path)
+        # Use remote connection if host/port provided (enables async)
+        if host and port:
+            # Remote connection - supports async operations
+            # Collection name is critical for isolation when using same server
+            return ChromaDocumentStore(
+                host=host,
+                port=port,
+                collection_name=collection_name or "default_collection",
+            )
+        else:
+            # Local persistence - sync only
+            chroma_path = os.path.join(root_dir, "data", "chroma")
+            os.makedirs(chroma_path, exist_ok=True)
+            return ChromaDocumentStore(persist_path=chroma_path)
     except ImportError as e:
         raise ImportError(
             f"ChromaDocumentStore not available. Install with: pip install chroma-haystack. Error: {e}"
+        )
+
+
+def _create_qdrant_document_store(
+    root_dir: str = ".",
+    host: Optional[str] = None,
+    port: Optional[int] = None,
+    collection_name: Optional[str] = None,
+    embedding_dim: int = 768,
+) -> Any:
+    """Create a QdrantDocumentStore with local or remote persistence.
+
+    Qdrant supports async operations with BOTH local and remote storage!
+
+    Args:
+        root_dir: Directory for local persistence (used if host/port not provided)
+        host: Optional Qdrant server host (e.g., "localhost")
+        port: Optional Qdrant server port (e.g., 6333)
+        collection_name: Collection name for isolation
+        embedding_dim: Dimension of embeddings (default: 768 for all-mpnet-base-v2)
+
+    Returns:
+        QdrantDocumentStore configured for local or remote connection
+    """
+    try:
+        from haystack_integrations.document_stores.qdrant import QdrantDocumentStore
+
+        # Use remote connection if host/port provided
+        if host and port:
+            return QdrantDocumentStore(
+                host=host,
+                port=port,
+                index=collection_name or "default_collection",
+                embedding_dim=embedding_dim,
+                recreate_index=False,  # Don't drop existing data
+                return_embedding=False,
+                wait_result_from_api=True,
+            )
+        else:
+            # Local persistence - FULLY ASYNC COMPATIBLE!
+            qdrant_path = os.path.join(root_dir, "data", "qdrant")
+            os.makedirs(qdrant_path, exist_ok=True)
+            return QdrantDocumentStore(
+                path=qdrant_path,
+                index=collection_name or "default_collection",
+                embedding_dim=embedding_dim,
+                recreate_index=False,
+                return_embedding=False,
+                wait_result_from_api=True,
+            )
+    except ImportError as e:
+        raise ImportError(
+            f"QdrantDocumentStore not available. Install with: pip install qdrant-haystack. Error: {e}"
         )
 
 
@@ -65,15 +140,65 @@ def create_haystack_component(spec: ComponentSpec) -> Any:
     config = spec.get_config().copy()  # Copy to avoid modifying original
 
     # Special handling for Chroma components - inject document store
-    if (
-        "ChromaEmbeddingRetriever" in spec.haystack_class
-        or "DocumentWriter" in spec.haystack_class
+    if "ChromaEmbeddingRetriever" in spec.haystack_class or (
+        "DocumentWriter" in spec.haystack_class and "Chroma" in spec.haystack_class
     ):
         # Get root directory from config or use current directory
         config.pop("model", None)  # Remove model if present for these components
         root_dir = config.pop("root_dir", ".")
-        document_store = _create_chroma_document_store(root_dir)
+
+        # Check for remote ChromaDB configuration (for async support)
+        chroma_host = config.pop("chroma_host", None)
+        chroma_port = config.pop("chroma_port", None)
+        chroma_collection = config.pop("chroma_collection", None)
+
+        document_store = _create_chroma_document_store(
+            root_dir=root_dir,
+            host=chroma_host,
+            port=chroma_port,
+            collection_name=chroma_collection,
+        )
         config["document_store"] = document_store
+
+    # Special handling for Qdrant components - inject document store
+    elif (
+        "QdrantEmbeddingRetriever" in spec.haystack_class
+        or "DocumentWriter" in spec.haystack_class
+    ):
+        # Check config for Qdrant-specific params
+        has_qdrant_config = any(
+            k in config
+            for k in [
+                "qdrant_host",
+                "qdrant_port",
+                "qdrant_collection",
+                "embedding_dim",
+            ]
+        )
+
+        if has_qdrant_config:
+            # Get root directory from config or use current directory
+            config.pop("model", None)  # Remove model if present for these components
+            root_dir = config.pop("root_dir", ".")
+
+            # Check for remote Qdrant configuration
+            qdrant_host = config.pop("qdrant_host", None)
+            qdrant_port = config.pop("qdrant_port", None)
+            qdrant_collection = config.pop("qdrant_collection", None)
+            embedding_dim = config.pop("embedding_dim", 768)  # Default to 768
+
+            document_store = _create_qdrant_document_store(
+                root_dir=root_dir,
+                host=qdrant_host,
+                port=qdrant_port,
+                collection_name=qdrant_collection,
+                embedding_dim=embedding_dim,
+            )
+            config["document_store"] = document_store
+        elif "DocumentWriter" in spec.haystack_class:
+            # DocumentWriter without Qdrant config - remove root_dir if present
+            # (This handles the case where root_dir was auto-generated but no Qdrant config)
+            config.pop("root_dir", None)
 
     # Dynamic import and instantiation
     module_path, class_name = spec.haystack_class.rsplit(".", 1)

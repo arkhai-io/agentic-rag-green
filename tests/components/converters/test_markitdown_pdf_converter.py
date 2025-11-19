@@ -44,7 +44,7 @@ class TestMarkItDownPDFToDocument:
         try:
             converter._initialize_markitdown()
             assert converter._markitdown_instance is not None
-            print("✅ MarkItDown initialization successful")
+            print("MarkItDown initialization successful")
         except ImportError:
             pytest.skip("MarkItDown not available")
 
@@ -138,7 +138,7 @@ class TestMarkItDownPDFToDocument:
             assert isinstance(result, str)
             assert len(result) > 0
             print(
-                f"✅ MarkItDown conversion successful: {len(result)} characters extracted"
+                f"MarkItDown conversion successful: {len(result)} characters extracted"
             )
 
         except ImportError as e:
@@ -154,7 +154,7 @@ class TestMarkItDownPDFToDocument:
             assert isinstance(result, dict)
             assert "documents" in result
             assert result["documents"] == []
-            print("✅ Empty sources test passed")
+            print("Empty sources test passed")
 
         except ImportError:
             pytest.skip("MarkItDown not available")
@@ -171,7 +171,7 @@ class TestMarkItDownPDFToDocument:
             assert isinstance(result, dict)
             assert "documents" in result
             assert result["documents"] == []
-            print("✅ Invalid source handling test passed")
+            print("Invalid source handling test passed")
 
         except ImportError:
             pytest.skip("MarkItDown not available")
@@ -205,10 +205,10 @@ class TestMarkItDownPDFToDocument:
             assert document.meta["converter"] == "markitdown"
             assert "file_path" in document.meta
 
-            print("✅ Successful conversion test passed")
-            print(f"📄 Extracted {len(document.content)} characters")
-            print(f"🏷️  Metadata: {document.meta}")
-            print("📝 Converted Markdown Content:")
+            print("Successful conversion test passed")
+            print(f"Extracted {len(document.content)} characters")
+            print(f"Metadata: {document.meta}")
+            print("Converted Markdown Content:")
             print("=" * 50)
             print(document.content)
             print("=" * 50)
@@ -242,8 +242,8 @@ class TestMarkItDownPDFToDocument:
             assert document.meta["category"] == "test"
             assert document.meta["converter"] == "markitdown"
 
-            print("✅ Metadata handling test passed")
-            print("📝 Converted Content with Metadata:")
+            print("Metadata handling test passed")
+            print("Converted Content with Metadata:")
             print("=" * 40)
             print(document.content)
             print("=" * 40)
@@ -273,7 +273,7 @@ class TestMarkItDownPDFToDocument:
 
             # Should store only filename, not full path
             assert document.meta["file_path"] == "test_file.pdf"
-            print("✅ store_full_path=False test passed")
+            print("store_full_path=False test passed")
 
         except ImportError as e:
             pytest.skip(f"Dependencies not available: {e}")
@@ -298,7 +298,7 @@ class TestMarkItDownPDFToDocument:
 
             # Should store full path
             assert str(pdf_path) in document.meta["file_path"]
-            print("✅ store_full_path=True test passed")
+            print("store_full_path=True test passed")
 
         except ImportError as e:
             pytest.skip(f"Dependencies not available: {e}")
@@ -334,9 +334,9 @@ class TestMarkItDownPDFToDocument:
             assert document.meta["converter"] == "markitdown"
             assert document.meta["source"] == "upload"
 
-            print("✅ ByteStream input test passed")
-            print(f"📄 Extracted {len(document.content)} characters from ByteStream")
-            print("📝 ByteStream Converted Content:")
+            print("ByteStream input test passed")
+            print(f"Extracted {len(document.content)} characters from ByteStream")
+            print("ByteStream Converted Content:")
             print("=" * 40)
             print(document.content)
             print("=" * 40)
@@ -373,7 +373,7 @@ class TestMarkItDownPDFToDocument:
                 assert f"multi_test_{i}.pdf" in document.meta["file_path"]
 
             print(
-                f"✅ Multiple sources test passed - converted {len(result['documents'])} PDFs"
+                f"Multiple sources test passed - converted {len(result['documents'])} PDFs"
             )
 
         except ImportError as e:
@@ -400,7 +400,7 @@ class TestMarkItDownPDFToDocument:
             document = result["documents"][0]
             assert document.meta["converter"] == "markitdown"
 
-            print("✅ Empty content handling test passed")
+            print("Empty content handling test passed")
 
         except ImportError as e:
             pytest.skip(f"Dependencies not available: {e}")
@@ -451,8 +451,8 @@ class TestMarkItDownPDFToDocument:
             # Note: This is a simplified test - in real usage, you'd handle file loading differently
             # For now, just verify the pipeline can be created with MarkItDown converter
 
-            print("✅ Pipeline integration test setup completed")
-            print("📝 Note: Full pipeline integration requires file loading components")
+            print("Pipeline integration test setup completed")
+            print("Note: Full pipeline integration requires file loading components")
 
         except ImportError as e:
             pytest.skip(f"Dependencies not available: {e}")
@@ -466,7 +466,7 @@ class TestMarkItDownPDFToDocument:
         assert "CONVERTER" in available
         assert "MARKITDOWN_PDF" in available["CONVERTER"]
 
-        print("✅ MarkItDown converter found in registry")
+        print("MarkItDown converter found in registry")
 
     def test_error_handling_with_markitdown_converter(self):
         """Test error handling in pipeline context."""
@@ -491,7 +491,7 @@ class TestMarkItDownPDFToDocument:
             assert len(spec.components) == 1
             assert spec.components[0].name == "markitdown_pdf_converter"
 
-            print("✅ MarkItDown converter pipeline creation successful")
+            print("MarkItDown converter pipeline creation successful")
 
         except ImportError as e:
             pytest.skip(f"Dependencies not available: {e}")
@@ -507,9 +507,9 @@ if __name__ == "__main__":
         test_instance.test_markitdown_initialization_success()
         test_instance.test_component_available_in_registry()
         test_instance.test_run_empty_sources()
-        print("\n🎉 All manual MarkItDown tests completed!")
+        print("\nAll manual MarkItDown tests completed!")
     except Exception as e:
-        print(f"❌ Test failed: {e}")
+        print(f"Test failed: {e}")
         import traceback
 
         traceback.print_exc()

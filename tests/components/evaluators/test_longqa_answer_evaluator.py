@@ -45,7 +45,7 @@ class TestLongQAAnswerEvaluator:
         assert len(evaluator.prompt_template) > 0
         assert "medical" in evaluator.prompt_template.lower()
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_run_with_answer(self, mock_post):
         """Test evaluation with an answer."""
         # Mock LLM response with dimension scores
@@ -97,7 +97,7 @@ class TestLongQAAnswerEvaluator:
             1 <= score <= 5 for score in longqa_metric["raw_dimension_scores"].values()
         )
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_run_with_eval_data_from_previous_evaluator(self, mock_post):
         """Test evaluation with existing eval_data."""
         mock_response = MagicMock()
@@ -150,7 +150,7 @@ class TestLongQAAnswerEvaluator:
 
         assert "longqa_answer" not in result["eval_data"]["eval_metrics"]
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_api_call_with_correct_headers(self, mock_post):
         """Test that API is called with correct headers."""
         mock_response = MagicMock()
@@ -187,7 +187,7 @@ class TestLongQAAnswerEvaluator:
         assert json_data["model"] == "openai/gpt-4"
         assert json_data["temperature"] == 0.0
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_json_parsing_with_code_blocks(self, mock_post):
         """Test JSON parsing from responses with code blocks."""
         mock_response = MagicMock()
@@ -220,7 +220,7 @@ class TestLongQAAnswerEvaluator:
         metric = result["eval_data"]["eval_metrics"]["longqa_answer"]
         assert metric["raw_score"] == pytest.approx((5 + 4 + 5) / 3)
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_error_handling_in_api_call(self, mock_post):
         """Test error handling when API call fails."""
         mock_post.side_effect = Exception("API Error")

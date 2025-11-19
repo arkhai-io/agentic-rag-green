@@ -33,7 +33,7 @@ class TestCommunicationQualityEvaluator:
             )
             assert evaluator.api_key == "env-key"
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_successful_evaluation(self, mock_post):
         """Test successful communication quality evaluation."""
         # Mock API response
@@ -74,7 +74,7 @@ class TestCommunicationQualityEvaluator:
         assert 0 <= tone_score <= 1
         assert eval_data["eval_metrics"]["communication_quality_tone"]["raw_score"] == 5
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_evaluation_with_existing_eval_data(self, mock_post):
         """Test that evaluation extends existing eval_data."""
         mock_response = MagicMock()
@@ -109,7 +109,7 @@ class TestCommunicationQualityEvaluator:
         # Check that new metrics are added
         assert "communication_quality_overall" in result["eval_data"]["eval_metrics"]
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_empty_reply(self, mock_post):
         """Test handling of empty reply."""
         evaluator = CommunicationQualityEvaluator(api_key="test-key")
@@ -122,7 +122,7 @@ class TestCommunicationQualityEvaluator:
             "eval_metrics", {}
         )
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_error_handling(self, mock_post):
         """Test error handling when API call fails."""
         mock_post.side_effect = Exception("API Error")
@@ -147,7 +147,7 @@ class TestCommunicationQualityEvaluator:
             in result["eval_data"]["eval_metrics"]["communication_quality_overall"]
         )
 
-    @patch("requests.post")
+    @patch("httpx.Client.post")
     def test_json_parsing_with_markdown(self, mock_post):
         """Test JSON parsing when response contains markdown code blocks."""
         mock_response = MagicMock()
