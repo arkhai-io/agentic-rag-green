@@ -433,8 +433,6 @@ class PipelineRunner:
                 import json
                 from copy import deepcopy
 
-                from ..types import create_haystack_component
-
                 component_config = (
                     json.loads(config_json) if config_json != "{}" else {}
                 )
@@ -465,9 +463,10 @@ class PipelineRunner:
                 else:
                     configured_spec = spec_copy
 
-                # Instantiate the actual Haystack component
-                # For writers/retrievers, create_haystack_component will handle document store creation
-                haystack_component = create_haystack_component(configured_spec)
+                # Instantiate the actual Haystack component using registry cache
+                # This will return a cached instance if available (LRU)
+                # For writers/retrievers, it will handle document store creation
+                haystack_component = registry.get_component_instance(configured_spec)
 
                 # Optionally wrap with GatedComponent for caching
                 if self.enable_caching:

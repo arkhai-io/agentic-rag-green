@@ -63,6 +63,7 @@ class Config:
         log_level: Optional[str] = None,
         log_file: Optional[str] = None,
         agentic_root_dir: Optional[str] = None,
+        component_cache_size: Optional[int] = None,
     ):
         """
         Initialize configuration.
@@ -80,6 +81,7 @@ class Config:
             log_level: Log level (defaults to AGENTIC_RAG_LOG_LEVEL env var or INFO)
             log_file: Log file path (defaults to AGENTIC_RAG_LOG_FILE env var)
             agentic_root_dir: Root directory for agentic-rag data (defaults to AGENTIC_ROOT_DIR env var or ./data)
+            component_cache_size: Max components to cache (defaults to AGENTIC_COMPONENT_CACHE_SIZE env var or 5)
         """
         # Neo4j configuration
         self.neo4j_uri = neo4j_uri or os.getenv("NEO4J_URI")
@@ -98,6 +100,12 @@ class Config:
         # Storage configuration
         self.agentic_root_dir = (
             agentic_root_dir or os.getenv("AGENTIC_ROOT_DIR") or "./data"
+        )
+
+        # Cache configuration
+        self.component_cache_size = (
+            component_cache_size
+            or int(os.getenv("AGENTIC_COMPONENT_CACHE_SIZE", "5"))
         )
 
     def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
@@ -178,6 +186,7 @@ class Config:
             "log_level": self.log_level,
             "log_file": self.log_file,
             "agentic_root_dir": self.agentic_root_dir,
+            "component_cache_size": self.component_cache_size,
         }
 
     def __repr__(self) -> str:
