@@ -5,13 +5,19 @@ import json
 from collections import OrderedDict
 from typing import Any, Dict, List, Optional
 
-from ..types import ComponentSpec, ComponentType, DataType, PipelineUsage, create_haystack_component
+from ..types import (
+    ComponentSpec,
+    ComponentType,
+    DataType,
+    PipelineUsage,
+    create_haystack_component,
+)
 
 
 class ComponentRegistry:
     """
     Registry for managing component specifications and caching instances.
-    
+
     Features:
     - Maps component names to specifications
     - Caches instantiated components (LRU) to prevent reloading heavy models
@@ -50,20 +56,19 @@ class ComponentRegistry:
     def get_component_instance(self, spec: ComponentSpec) -> Any:
         """
         Get or create a component instance with LRU caching.
-        
+
         Args:
             spec: Configured component specification
-            
+
         Returns:
             Instantiated Haystack component
         """
         # Skip caching for components that shouldn't be shared or are lightweight
         # e.g., DocumentStores and Writers which might have unique connection states
         skip_caching = (
-            spec.component_type == ComponentType.WRITER or 
-            "store" in spec.name.lower()
+            spec.component_type == ComponentType.WRITER or "store" in spec.name.lower()
         )
-        
+
         if skip_caching:
             return create_haystack_component(spec)
 

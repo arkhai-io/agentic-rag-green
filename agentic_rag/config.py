@@ -103,9 +103,8 @@ class Config:
         )
 
         # Cache configuration
-        self.component_cache_size = (
-            component_cache_size
-            or int(os.getenv("AGENTIC_COMPONENT_CACHE_SIZE", "5"))
+        self.component_cache_size = component_cache_size or int(
+            os.getenv("AGENTIC_COMPONENT_CACHE_SIZE", "5")
         )
 
     def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
