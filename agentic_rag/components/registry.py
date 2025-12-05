@@ -74,7 +74,7 @@ class ComponentRegistry:
 
         # Generate cache key based on component class and sorted configuration
         # This ensures identical configs share the same instance
-        config_str = json.dumps(spec.default_config, sort_keys=True)
+        config_str = json.dumps(spec.get_config(), sort_keys=True)
         config_hash = hashlib.md5(config_str.encode()).hexdigest()
         cache_key = f"{spec.haystack_class}_{config_hash}"
 

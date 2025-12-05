@@ -99,7 +99,7 @@ class GraphStorage:
         self.logger.info(
             f"Creating pipeline graph for user '{username}', project '{project}', pipeline '{spec.name}'"
         )
-        user_node = UserNode(username=username, display_name=username.title())
+        user_node = UserNode(username=username, display_name=username)
         user_dict = user_node.to_dict()
         self.graph_store.add_nodes_batch([user_dict], "User")
 
@@ -209,7 +209,7 @@ class GraphStorage:
         self.logger.info(
             f"Creating pipeline graph (async) for user '{username}', project '{project}', pipeline '{spec.name}'"
         )
-        user_node = UserNode(username=username, display_name=username.title())
+        user_node = UserNode(username=username, display_name=username)
         user_dict = user_node.to_dict()
         await self.graph_store.add_nodes_batch_async([user_dict], "User")
 

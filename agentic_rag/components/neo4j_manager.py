@@ -556,6 +556,89 @@ class GraphStore:
 
         return components
 
+    async def create_user_async(self, username: str) -> None:
+        """Create a new user node if it doesn't exist."""
+        async with self.async_driver.session(database=self.database) as session:
+            # Use id as the merge key to match add_nodes_batch behavior
+            query = """
+                MERGE (u:User {id: $username})
+                SET u.username = $username
+            """
+            await session.run(query, username=username)
+
+    async def create_project_async(self, username: str, project_name: str) -> None:
+        """Create a new project for a user."""
+        # Import here to avoid circular imports
+        import hashlib
+        project_id = f"proj_{hashlib.sha256(f'{username}__{project_name}'.encode()).hexdigest()[:12]}"
+        
+        async with self.async_driver.session(database=self.database) as session:
+            query = """
+                MERGE (u:User {id: $username})
+                SET u.username = $username
+                MERGE (p:Project {id: $project_id})
+                ON CREATE SET 
+                    p.name = $project_name,
+                    p.username = $username,
+                    p.created_at = datetime()
+                MERGE (u)-[:OWNS]->(p)
+            """
+            await session.run(
+                query, 
+                username=username, 
+                project_name=project_name,
+                project_id=project_id
+            )
+
+    async def get_user_projects_and_pipelines_async(
+        self, username: str
+    ) -> List[Dict[str, Any]]:
+        """Get all projects and pipelines for a user."""
+        async with self.async_driver.session(database=self.database) as session:
+            query = """
+                MATCH (u:User {username: $username})-[:OWNS]->(p:Project)
+                OPTIONAL MATCH (p)-[:FLOWS_TO]->(c:Component)
+                WHERE c.pipeline_name IS NOT NULL
+                WITH p, c.pipeline_name as pname, c.pipeline_type as ptype
+                WITH p, collect(DISTINCT CASE WHEN pname IS NOT NULL THEN {name: pname, type: ptype} END) as raw_pipelines
+                WITH p, [x IN raw_pipelines WHERE x IS NOT NULL] as pipelines
+                RETURN {
+                    project: p.name,
+                    pipelines: [x in pipelines | x.name],
+                    details: pipelines
+                } as project_data
+            """
+            result = await session.run(query, username=username)
+            results = await result.data()
+            return [record["project_data"] for record in results]
+
+    async def project_exists_async(self, username: str, project_name: str) -> bool:
+        """Check if a project exists for a user."""
+        async with self.async_driver.session(database=self.database) as session:
+            query = """
+                MATCH (u:User {username: $username})-[:OWNS]->(p:Project {name: $project_name})
+                RETURN p
+            """
+            result = await session.run(query, username=username, project_name=project_name)
+            return await result.single() is not None
+
+    async def pipeline_exists_async(self, username: str, project_name: str, pipeline_name: str) -> bool:
+        """Check if a pipeline exists in a project."""
+        async with self.async_driver.session(database=self.database) as session:
+            query = """
+                MATCH (u:User {username: $username})-[:OWNS]->(p:Project {name: $project_name})
+                MATCH (p)-[:FLOWS_TO]->(c:Component {pipeline_name: $pipeline_name})
+                RETURN c
+                LIMIT 1
+            """
+            result = await session.run(
+                query, 
+                username=username, 
+                project_name=project_name, 
+                pipeline_name=pipeline_name
+            )
+            return await result.single() is not None
+
     def lookup_cached_transformations_batch(
         self, input_fingerprints: List[str], component_id: str, config_hash: str
     ) -> Dict[str, List[Dict[str, Any]]]:
