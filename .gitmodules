@@ -1,0 +1,3 @@
+[submodule "agentic-rag"]
+	path = agentic-rag
+	url = https://github.com/arkhai-io/agentic-rag
