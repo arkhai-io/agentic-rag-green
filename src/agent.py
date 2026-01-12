@@ -208,9 +208,16 @@ class RAGAssessorAgent:
                 params=request.params,
             )
             
-            # If registration succeeded, store the agent name for this session
-            if response.success and response.data:
-                self.current_agent_name = response.data.get("agent_name")
+            # Set session for both success and already_exists (allows session restore after restart)
+            if response.data:
+                status = response.data.get("status")
+                if status in ("success", "already_exists"):
+                    self.current_agent_name = response.data.get("agent_name")
+                    # Mark as success for already_exists (session restored)
+                    if status == "already_exists":
+                        response.success = True
+                        response.error = None
+                        response.data["message"] = f"Session restored for agent '{self.current_agent_name}'."
         
         else:
             # For other actions, use the current agent name

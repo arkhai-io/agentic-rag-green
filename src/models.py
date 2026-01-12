@@ -46,6 +46,8 @@ class ActionType(str, Enum):
     LIST_PROJECTS = "list_projects"
     
     # Document operations
+    UPLOAD_DOCUMENTS = "upload_documents"
+    LIST_DOCUMENTS = "list_documents"
     INDEX_DOCUMENTS = "index_documents"
     
     # Query operations
@@ -314,3 +316,100 @@ class QueryResult(BaseModel):
     answer: str
     retrieved_documents: Optional[List[Dict[str, Any]]] = None
     eval_metrics: Optional[Dict[str, Any]] = None
+
+
+# =============================================================================
+# DOCUMENT MODELS - For document upload and management
+# =============================================================================
+
+class DocumentUpload(BaseModel):
+    """
+    A single document to upload.
+    
+    Attributes:
+        filename: Name of the file (e.g., "paper.pdf", "notes.txt")
+        content_base64: Base64-encoded file content
+        content_type: MIME type (e.g., "application/pdf", "text/plain")
+    """
+    filename: str
+    content_base64: str
+    content_type: Optional[str] = None
+
+
+class UploadDocumentsRequest(BaseModel):
+    """
+    Request to upload documents to a project.
+    
+    Documents are stored locally and can be indexed later with index_documents.
+    
+    Attributes:
+        project_name: Project to upload documents to
+        documents: List of documents to upload (base64 encoded)
+    
+    Example:
+        {
+            "action": "upload_documents",
+            "params": {
+                "project_name": "ml_docs",
+                "documents": [
+                    {
+                        "filename": "paper.pdf",
+                        "content_base64": "JVBERi0xLjQK...",
+                        "content_type": "application/pdf"
+                    }
+                ]
+            }
+        }
+    """
+    project_name: str
+    documents: List[DocumentUpload]
+
+
+class UploadDocumentsResult(BaseModel):
+    """
+    Result of document upload operation.
+    
+    Attributes:
+        project_name: Project documents were uploaded to
+        uploaded_files: List of successfully uploaded filenames
+        storage_path: Path where documents are stored
+        total_size_bytes: Total size of uploaded documents
+    """
+    project_name: str
+    uploaded_files: List[str]
+    storage_path: str
+    total_size_bytes: int
+
+
+class IndexDocumentsRequest(BaseModel):
+    """
+    Request to index uploaded documents using a pipeline.
+    
+    Attributes:
+        project_name: Project containing the documents
+        pipeline_name: Indexing pipeline to use
+        file_patterns: Optional glob patterns to filter files (default: all)
+    
+    Example:
+        {
+            "action": "index_documents",
+            "params": {
+                "project_name": "ml_docs",
+                "pipeline_name": "indexer",
+                "file_patterns": ["*.pdf", "*.txt"]
+            }
+        }
+    """
+    project_name: str
+    pipeline_name: str
+    file_patterns: Optional[List[str]] = None
+
+
+class ListDocumentsRequest(BaseModel):
+    """
+    Request to list uploaded documents in a project.
+    
+    Attributes:
+        project_name: Project to list documents from
+    """
+    project_name: str

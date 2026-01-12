@@ -452,6 +452,155 @@ class RAGEnvironment:
             )
 
     # =========================================================================
+    # DOCUMENT MANAGEMENT
+    # =========================================================================
+
+    def _get_documents_path(self, agent_name: str, project_name: str) -> str:
+        """Get the local path for storing documents."""
+        root_dir = os.getenv("AGENTIC_ROOT_DIR", "./data")
+        return os.path.join(root_dir, agent_name, project_name, "documents")
+
+    async def upload_documents(
+        self,
+        agent_name: str,
+        project_name: str,
+        documents: List[Dict[str, Any]],
+    ) -> ActionResponse:
+        """
+        Upload documents to local storage for later indexing.
+        
+        Args:
+            agent_name: The agent uploading documents
+            project_name: Project to upload documents to
+            documents: List of dicts with filename, content_base64, content_type
+        
+        Returns:
+            ActionResponse with upload results
+        """
+        import base64
+        
+        await self.initialize()
+
+        if not await self.is_registered(agent_name):
+            return ActionResponse(
+                success=False,
+                action=ActionType.UPLOAD_DOCUMENTS,
+                error=f"Agent '{agent_name}' is not registered.",
+            )
+
+        # Verify project exists
+        if not await self._graph_store.project_exists_async(agent_name, project_name):
+            return ActionResponse(
+                success=False,
+                action=ActionType.UPLOAD_DOCUMENTS,
+                error=f"Project '{project_name}' does not exist.",
+            )
+
+        try:
+            # Create documents directory
+            docs_path = self._get_documents_path(agent_name, project_name)
+            os.makedirs(docs_path, exist_ok=True)
+
+            uploaded_files = []
+            total_size = 0
+
+            for doc in documents:
+                filename = doc.get("filename", "")
+                content_b64 = doc.get("content_base64", "")
+                
+                if not filename or not content_b64:
+                    continue
+
+                # Decode and write file
+                content = base64.b64decode(content_b64)
+                file_path = os.path.join(docs_path, filename)
+                
+                with open(file_path, "wb") as f:
+                    f.write(content)
+                
+                uploaded_files.append(filename)
+                total_size += len(content)
+
+            return ActionResponse(
+                success=True,
+                action=ActionType.UPLOAD_DOCUMENTS,
+                data={
+                    "project_name": project_name,
+                    "uploaded_files": uploaded_files,
+                    "storage_path": docs_path,
+                    "total_size_bytes": total_size,
+                    "file_count": len(uploaded_files),
+                },
+            )
+        except Exception as e:
+            return ActionResponse(
+                success=False,
+                action=ActionType.UPLOAD_DOCUMENTS,
+                error=f"Upload failed: {str(e)}",
+            )
+
+    async def list_documents(
+        self,
+        agent_name: str,
+        project_name: str,
+    ) -> ActionResponse:
+        """
+        List uploaded documents in a project.
+        
+        Args:
+            agent_name: The agent listing documents
+            project_name: Project to list documents from
+        
+        Returns:
+            ActionResponse with list of documents
+        """
+        await self.initialize()
+
+        if not await self.is_registered(agent_name):
+            return ActionResponse(
+                success=False,
+                action=ActionType.LIST_DOCUMENTS,
+                error=f"Agent '{agent_name}' is not registered.",
+            )
+
+        try:
+            docs_path = self._get_documents_path(agent_name, project_name)
+            
+            if not os.path.exists(docs_path):
+                return ActionResponse(
+                    success=True,
+                    action=ActionType.LIST_DOCUMENTS,
+                    data={"documents": [], "storage_path": docs_path},
+                )
+
+            documents = []
+            for filename in os.listdir(docs_path):
+                file_path = os.path.join(docs_path, filename)
+                if os.path.isfile(file_path):
+                    stat = os.stat(file_path)
+                    documents.append({
+                        "filename": filename,
+                        "size_bytes": stat.st_size,
+                        "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    })
+
+            return ActionResponse(
+                success=True,
+                action=ActionType.LIST_DOCUMENTS,
+                data={
+                    "documents": documents,
+                    "storage_path": docs_path,
+                    "total_files": len(documents),
+                },
+            )
+        except Exception as e:
+            return ActionResponse(
+                success=False,
+                action=ActionType.LIST_DOCUMENTS,
+                error=f"Failed to list documents: {str(e)}",
+            )
+
+    # =========================================================================
     # INDEXING
     # =========================================================================
 
@@ -460,20 +609,22 @@ class RAGEnvironment:
         agent_name: str,
         project_name: str,
         pipeline_name: str,
-        documents: List[Dict[str, Any]],
+        file_patterns: Optional[List[str]] = None,
     ) -> ActionResponse:
         """
-        Index documents using the SDK's PipelineRunner.
+        Index uploaded documents using an indexing pipeline.
         
         Args:
             agent_name: The agent indexing documents
-            project_name: Project containing the pipeline
+            project_name: Project containing the documents
             pipeline_name: Name of the indexing pipeline to use
-            documents: List of documents to index
+            file_patterns: Optional glob patterns to filter files
         
         Returns:
             ActionResponse with indexing results
         """
+        import glob as glob_module
+        
         await self.initialize()
 
         if not await self.is_registered(agent_name):
@@ -483,21 +634,67 @@ class RAGEnvironment:
                 error=f"Agent '{agent_name}' is not registered.",
             )
 
+        # Check pipeline exists
+        if not await self._graph_store.pipeline_exists_async(agent_name, project_name, pipeline_name):
+            return ActionResponse(
+                success=False,
+                action=ActionType.INDEX_DOCUMENTS,
+                error=f"Pipeline '{pipeline_name}' does not exist.",
+            )
+
         try:
-            # Load pipeline
+            docs_path = self._get_documents_path(agent_name, project_name)
+            
+            if not os.path.exists(docs_path):
+                return ActionResponse(
+                    success=False,
+                    action=ActionType.INDEX_DOCUMENTS,
+                    error=f"No documents found. Upload documents first.",
+                )
+
+            # Get files to index
+            if file_patterns:
+                files = []
+                for pattern in file_patterns:
+                    files.extend(glob_module.glob(os.path.join(docs_path, pattern)))
+            else:
+                files = [
+                    os.path.join(docs_path, f) 
+                    for f in os.listdir(docs_path) 
+                    if os.path.isfile(os.path.join(docs_path, f))
+                ]
+
+            if not files:
+                return ActionResponse(
+                    success=False,
+                    action=ActionType.INDEX_DOCUMENTS,
+                    error="No files match the specified patterns.",
+                )
+
+            # Load and run indexing pipeline
             await self._runner.load_pipelines_async(
                 pipeline_names=[pipeline_name],
                 username=agent_name,
                 project=project_name,
             )
 
-            # TODO: Run indexing pipeline with documents
-            # This would need to write documents to temp dir and run pipeline
-            # For now, return not implemented
+            result = await self._runner.run_async(
+                pipeline_name=pipeline_name,
+                username=agent_name,
+                type="indexing",
+                project=project_name,
+                data_path=docs_path,
+            )
+
             return ActionResponse(
-                success=False,
+                success=True,
                 action=ActionType.INDEX_DOCUMENTS,
-                error="Document indexing not yet implemented. Use file upload via pipeline run.",
+                data={
+                    "pipeline_name": pipeline_name,
+                    "indexed_files": [os.path.basename(f) for f in files],
+                    "file_count": len(files),
+                    "result": result,
+                },
             )
         except Exception as e:
             return ActionResponse(
@@ -579,6 +776,23 @@ class RAGEnvironment:
                 ground_truth_answer=params.get("ground_truth_answer"),
             )
 
+        elif action == ActionType.UPLOAD_DOCUMENTS:
+            if not agent_name:
+                return ActionResponse(success=False, action=action, error="agent_name required")
+            return await self.upload_documents(
+                agent_name=agent_name,
+                project_name=params.get("project_name", "default"),
+                documents=params.get("documents", []),
+            )
+
+        elif action == ActionType.LIST_DOCUMENTS:
+            if not agent_name:
+                return ActionResponse(success=False, action=action, error="agent_name required")
+            return await self.list_documents(
+                agent_name=agent_name,
+                project_name=params.get("project_name", "default"),
+            )
+
         elif action == ActionType.INDEX_DOCUMENTS:
             if not agent_name:
                 return ActionResponse(success=False, action=action, error="agent_name required")
@@ -586,7 +800,7 @@ class RAGEnvironment:
                 agent_name=agent_name,
                 project_name=params.get("project_name", "default"),
                 pipeline_name=params.get("pipeline_name", ""),
-                documents=params.get("documents", []),
+                file_patterns=params.get("file_patterns"),
             )
 
         else:

@@ -53,3 +53,5 @@ htmlcov/
 # uv
 .uv/
 
+
+data/
