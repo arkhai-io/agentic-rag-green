@@ -1,8 +1,5 @@
 """Component registry for mapping component names to Haystack classes."""
 
-import hashlib
-import json
-from collections import OrderedDict
 from typing import Any, Dict, List, Optional
 
 from ..types import (
@@ -16,19 +13,15 @@ from ..types import (
 
 class ComponentRegistry:
     """
-    Registry for managing component specifications and caching instances.
+    Registry for managing component specifications.
 
     Features:
     - Maps component names to specifications
-    - Caches instantiated components (LRU) to prevent reloading heavy models
-    - Ensures efficient resource usage across pipelines
+    - Creates component instances on demand
     """
 
-    def __init__(self, max_cache_size: int = 10) -> None:
+    def __init__(self) -> None:
         self._components: Dict[str, ComponentSpec] = {}
-        # LRU Cache: key -> component_instance
-        self._instance_cache: OrderedDict[str, Any] = OrderedDict()
-        self._max_cache_size = max_cache_size
         self._initialize_default_components()
 
     def register_component(self, spec: ComponentSpec) -> None:
@@ -55,7 +48,10 @@ class ComponentRegistry:
 
     def get_component_instance(self, spec: ComponentSpec) -> Any:
         """
-        Get or create a component instance with LRU caching.
+        Create a new component instance.
+
+        Note: Caching is disabled because Haystack components cannot be shared
+        between pipelines. Each pipeline needs its own component instances.
 
         Args:
             spec: Configured component specification
@@ -63,43 +59,8 @@ class ComponentRegistry:
         Returns:
             Instantiated Haystack component
         """
-        # Skip caching for components that shouldn't be shared or are lightweight
-        # e.g., DocumentStores and Writers which might have unique connection states
-        skip_caching = (
-            spec.component_type == ComponentType.WRITER or "store" in spec.name.lower()
-        )
-
-        if skip_caching:
-            return create_haystack_component(spec)
-
-        # Generate cache key based on component class and sorted configuration
-        # This ensures identical configs share the same instance
-        config_str = json.dumps(spec.get_config(), sort_keys=True)
-        config_hash = hashlib.md5(config_str.encode()).hexdigest()
-        cache_key = f"{spec.haystack_class}_{config_hash}"
-
-        # 1. Cache Hit
-        if cache_key in self._instance_cache:
-            # Move to end (mark as recently used)
-            self._instance_cache.move_to_end(cache_key)
-            return self._instance_cache[cache_key]
-
-        # 2. Cache Miss - Create new instance
-        component = create_haystack_component(spec)
-
-        # 3. Eviction (if full)
-        if len(self._instance_cache) >= self._max_cache_size:
-            # Pop the first item (Least Recently Used)
-            oldest_key, _ = self._instance_cache.popitem(last=False)
-            # Python GC will handle the cleanup
-
-        # 4. Store new component
-        self._instance_cache[cache_key] = component
-        return component
-
-    def clear_cache(self) -> None:
-        """Clear the component instance cache."""
-        self._instance_cache.clear()
+        # Always create new instances - Haystack doesn't allow component sharing
+        return create_haystack_component(spec)
 
     def _initialize_default_components(self) -> None:
         """Initialize default Haystack component mappings."""
@@ -601,9 +562,5 @@ def get_default_registry() -> ComponentRegistry:
     """Get the default component registry."""
     global _default_registry
     if _default_registry is None:
-        from ..config import get_global_config
-
-        config = get_global_config()
-        cache_size = config.component_cache_size if config else 5
-        _default_registry = ComponentRegistry(max_cache_size=cache_size)
+        _default_registry = ComponentRegistry()
     return _default_registry

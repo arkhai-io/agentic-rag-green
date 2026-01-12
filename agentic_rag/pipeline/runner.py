@@ -1452,30 +1452,110 @@ class PipelineRunner:
         results = await asyncio.gather(*branch_tasks)
 
         # Map results back to branch_ids
-        branch_results = dict(zip(branch_pipelines.keys(), results))
+        raw_branch_results = dict(zip(branch_pipelines.keys(), results))
 
-        # Aggregate documents
+        # Process each branch into structured output
+        structured_branches = {}
         all_documents = []
-        for branch_id, result in branch_results.items():
-            if isinstance(result, dict) and "error" not in result:
-                for comp_result in result.values():
-                    if isinstance(comp_result, dict) and "documents" in comp_result:
+        
+        for branch_id, raw_result in raw_branch_results.items():
+            branch_output = {
+                "answer": None,
+                "documents": [],
+                "evaluations": {},
+                "metadata": {
+                    "branch_id": branch_id,
+                    "model": None,
+                    "usage": None,
+                }
+            }
+            
+            if isinstance(raw_result, dict) and "error" not in raw_result:
+                for comp_id, comp_result in raw_result.items():
+                    if not isinstance(comp_result, dict):
+                        continue
+                    
+                    result_keys = set(comp_result.keys())
+                    
+                    # Extract LLM reply (generator output)
+                    if "replies" in comp_result and comp_result["replies"]:
+                        branch_output["answer"] = comp_result["replies"][0]
+                        if "meta" in comp_result and comp_result["meta"]:
+                            meta = comp_result["meta"][0] if isinstance(comp_result["meta"], list) else comp_result["meta"]
+                            branch_output["metadata"]["model"] = meta.get("model")
+                            branch_output["metadata"]["usage"] = meta.get("usage")
+                        continue
+                    
+                    # Extract documents (retriever output)
+                    if "documents" in comp_result:
                         docs = comp_result["documents"]
+                        serialized_docs = []
                         for doc in docs:
-                            if hasattr(doc, "meta"):
-                                doc.meta["branch_id"] = branch_id
-                            else:
-                                doc.meta = {"branch_id": branch_id}
-                        all_documents.extend(docs)
+                            doc_dict = {
+                                "content": doc.content if hasattr(doc, "content") else str(doc),
+                                "score": doc.score if hasattr(doc, "score") else None,
+                                "meta": dict(doc.meta) if hasattr(doc, "meta") else {},
+                            }
+                            doc_dict["meta"]["branch_id"] = branch_id
+                            serialized_docs.append(doc_dict)
+                            all_documents.append(doc_dict)
+                        branch_output["documents"] = serialized_docs
+                        continue
+                    
+                    # Skip embedder and prompt builder outputs
+                    if "embedding" in result_keys or "prompt" in result_keys:
+                        continue
+                    
+                    # Check for evaluator output format: {"eval_data": {"eval_metrics": {...}}}
+                    if "eval_data" in comp_result:
+                        eval_data = comp_result["eval_data"]
+                        if isinstance(eval_data, dict) and "eval_metrics" in eval_data:
+                            for metric_name, metric_data in eval_data["eval_metrics"].items():
+                                if isinstance(metric_data, dict) and "score" in metric_data:
+                                    display_name = metric_name.replace("_", " ").title()
+                                    branch_output["evaluations"][display_name] = metric_data["score"]
+                                elif isinstance(metric_data, (int, float)):
+                                    display_name = metric_name.replace("_", " ").title()
+                                    branch_output["evaluations"][display_name] = metric_data
+                        continue
+                    
+                    # Fallback: direct numeric values
+                    for key, val in comp_result.items():
+                        if isinstance(val, (int, float)):
+                            display_name = key.replace("_", " ").title()
+                            branch_output["evaluations"][display_name] = val
+                        elif key == "individual_scores" and isinstance(val, list) and val:
+                            if isinstance(val[0], (int, float)):
+                                branch_output["evaluations"]["Avg Score"] = sum(val) / len(val)
+            else:
+                branch_output["error"] = raw_result.get("error", "Unknown error")
+            
+            structured_branches[branch_id] = branch_output
 
         self.logger.info(
             f"Retrieval completed (async): {len(all_documents)} documents from {len(branch_pipelines)} branches"
         )
 
+        # Serialize raw results for debugging (convert non-serializable objects)
+        def serialize_raw(obj: Any) -> Any:
+            if hasattr(obj, "to_dict"):
+                return obj.to_dict()
+            elif hasattr(obj, "__dict__"):
+                return {k: serialize_raw(v) for k, v in obj.__dict__.items() if not k.startswith("_")}
+            elif isinstance(obj, dict):
+                return {k: serialize_raw(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [serialize_raw(i) for i in obj]
+            elif isinstance(obj, (str, int, float, bool, type(None))):
+                return obj
+            else:
+                return str(obj)
+        
         return {
             "query": query,
-            "branches": branch_results,
+            "branches": structured_branches,
             "documents": all_documents,
             "total_documents": len(all_documents),
             "branches_count": len(branch_pipelines),
+            "raw": {branch_id: serialize_raw(result) for branch_id, result in raw_branch_results.items()},
         }
