@@ -36,7 +36,9 @@ Architecture:
 """
 
 import json
-from typing import Any, Dict, Optional
+import os
+import time
+from typing import Any, Dict, List, Optional
 
 from a2a.server.tasks import TaskUpdater
 from a2a.types import DataPart, Message, Part, TaskState, TextPart
@@ -110,7 +112,12 @@ class RAGAssessorAgent:
     required_roles: list[str] = ["rag_agent"]
     
     # Required config keys for assessment
-    required_config_keys: list[str] = []
+    required_config_keys: list[str] = [
+        "agent_name",           # Purple agent's registered name
+        "project_name",         # Purple agent's project name
+        "indexing_pipeline",    # Purple agent's indexing pipeline name
+        "retrieval_pipeline",   # Purple agent's retrieval pipeline name
+    ]
 
     def __init__(self):
         """Initialize the Green Agent."""
@@ -251,6 +258,14 @@ class RAGAssessorAgent:
         This is called when the Green Agent receives an EvalRequest
         to run a full assessment on a Purple Agent.
         
+        Assessment Flow:
+        ----------------
+        1. Purple agent provides their pipeline names via config
+        2. Green agent loads benchmark documents and questions
+        3. Green agent indexes documents using purple agent's indexing pipeline
+        4. Green agent runs queries using purple agent's retrieval pipeline
+        5. Green agent collects and returns results
+        
         Args:
             data: The parsed EvalRequest data
             updater: TaskUpdater for reporting results
@@ -274,35 +289,274 @@ class RAGAssessorAgent:
                 )
                 return
             
+            # Extract config values
+            config = eval_request.config
+            agent_name = config["agent_name"]
+            project_name = config["project_name"]
+            indexing_pipeline = config["indexing_pipeline"]
+            retrieval_pipeline = config["retrieval_pipeline"]
+            
+            # Optional config
+            benchmark_domain = config.get("domain", "female_longevity")
+            
             await updater.update_status(
                 TaskState.working,
-                new_agent_text_message("Starting assessment...")
+                new_agent_text_message(f"Starting assessment for agent '{agent_name}'...")
             )
             
-            # TODO: Implement full assessment logic
-            # This would:
-            # 1. Load benchmark tasks
-            # 2. Send tasks to Purple Agent via A2A
-            # 3. Evaluate responses
-            # 4. Report scores
+            # Initialize environment
+            await self.environment.initialize()
             
-            # For now, just acknowledge the assessment request
+            # =========================================================
+            # STEP 1: Load benchmark data (documents + questions)
+            # =========================================================
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message(f"Loading benchmark data for domain: {benchmark_domain}")
+            )
+            
+            benchmark = await self._load_benchmark(benchmark_domain)
+            if not benchmark:
+                await updater.reject(
+                    new_agent_text_message(f"Failed to load benchmark for domain: {benchmark_domain}")
+                )
+                return
+            
+            documents = benchmark.get("documents", [])
+            questions = benchmark.get("questions", [])
+            
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message(
+                    f"Loaded {len(documents)} documents and {len(questions)} questions"
+                )
+            )
+            
+            # =========================================================
+            # STEP 2: Upload benchmark documents to purple agent's project
+            # =========================================================
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message(f"Uploading documents to project '{project_name}'...")
+            )
+            
+            upload_result = await self.environment.upload_documents(
+                agent_name=agent_name,
+                project_name=project_name,
+                documents=documents,
+            )
+            
+            if not upload_result.success:
+                await updater.reject(
+                    new_agent_text_message(f"Failed to upload documents: {upload_result.error}")
+                )
+                return
+            
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message(
+                    f"Uploaded {upload_result.data.get('file_count', 0)} documents"
+                )
+            )
+            
+            # =========================================================
+            # STEP 3: Index documents using purple agent's indexing pipeline
+            # =========================================================
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message(
+                    f"Indexing documents with pipeline '{indexing_pipeline}'..."
+                )
+            )
+            
+            start_time = time.time()
+            
+            index_result = await self.environment.index_documents(
+                agent_name=agent_name,
+                project_name=project_name,
+                pipeline_name=indexing_pipeline,
+            )
+            
+            indexing_time = time.time() - start_time
+            
+            if not index_result.success:
+                await updater.reject(
+                    new_agent_text_message(f"Failed to index documents: {index_result.error}")
+                )
+                return
+            
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message(
+                    f"Indexed {index_result.data.get('file_count', 0)} documents in {indexing_time:.2f}s"
+                )
+            )
+            
+            # =========================================================
+            # STEP 4: Run queries using purple agent's retrieval pipeline
+            # =========================================================
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message(
+                    f"Running {len(questions)} queries with pipeline '{retrieval_pipeline}'..."
+                )
+            )
+            
+            query_results: List[Dict[str, Any]] = []
+            query_start_time = time.time()
+            
+            for i, qa in enumerate(questions):
+                question = qa.get("question", "")
+                question_id = qa.get("id", f"q{i+1}")
+                
+                await updater.update_status(
+                    TaskState.working,
+                    new_agent_text_message(f"Running query {i+1}/{len(questions)}: {question[:50]}...")
+                )
+                
+                # Run query through purple agent's retrieval pipeline
+                query_result = await self.environment.query(
+                    agent_name=agent_name,
+                    project_name=project_name,
+                    pipeline_name=retrieval_pipeline,
+                    query=question,
+                )
+                
+                # Extract only relevant data (remove raw embeddings to keep response small)
+                answer_data = None
+                if query_result.success and query_result.data:
+                    result = query_result.data.get("result", {})
+                    # Keep only documents with content and scores, not raw embeddings
+                    clean_docs = []
+                    for doc in result.get("documents", []):
+                        clean_docs.append({
+                            "content": doc.get("content", "")[:500],  # Truncate content
+                            "score": doc.get("score"),
+                            "file_path": doc.get("meta", {}).get("file_path"),
+                        })
+                    answer_data = {
+                        "total_documents": result.get("total_documents", 0),
+                        "documents": clean_docs,
+                    }
+                
+                query_results.append({
+                    "question_id": question_id,
+                    "question": question,
+                    "success": query_result.success,
+                    "answer": answer_data,
+                    "error": query_result.error if not query_result.success else None,
+                })
+            
+            total_query_time = time.time() - query_start_time
+            total_time = time.time() - start_time
+            
+            # =========================================================
+            # STEP 5: Compile results
+            # =========================================================
+            successful_queries = sum(1 for r in query_results if r["success"])
+            
+            assessment_results = {
+                "agent_name": agent_name,
+                "project_name": project_name,
+                "indexing_pipeline": indexing_pipeline,
+                "retrieval_pipeline": retrieval_pipeline,
+                "benchmark_domain": benchmark_domain,
+                "documents_indexed": index_result.data.get("file_count", 0),
+                "questions_total": len(questions),
+                "questions_answered": successful_queries,
+                "indexing_time_seconds": round(indexing_time, 2),
+                "query_time_seconds": round(total_query_time, 2),
+                "total_time_seconds": round(total_time, 2),
+                "query_results": query_results,
+            }
+            
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message(
+                    f"Assessment complete: {successful_queries}/{len(questions)} queries successful"
+                )
+            )
+            
+            # Return results as artifact
             await updater.add_artifact(
                 parts=[
-                    Part(root=TextPart(text="Assessment acknowledged")),
+                    Part(root=TextPart(text=f"Assessment completed for agent '{agent_name}'")),
                     Part(root=DataPart(data={
-                        "participants": {k: str(v) for k, v in eval_request.participants.items()},
-                        "config": eval_request.config,
-                        "status": "not_yet_implemented",
+                        "participants": {
+                            "rag_agent": str(eval_request.participants.get("rag_agent", agent_name))
+                        },
+                        "results": [{
+                            "pass_rate": successful_queries / len(questions) if questions else 0,
+                            "time_used": round(total_time, 2),
+                            "max_score": len(questions),
+                            "questions_answered": successful_queries,
+                        }],
+                        "details": assessment_results,
                     }))
                 ],
-                name="Assessment Result",
+                name="Assessment Results",
             )
             
         except ValidationError as e:
             await updater.reject(
                 new_agent_text_message(f"Invalid EvalRequest: {e}")
             )
+        except Exception as e:
+            await updater.failed(
+                new_agent_text_message(f"Assessment failed with error: {str(e)}")
+            )
+
+    async def _load_benchmark(self, domain: str) -> Optional[Dict[str, Any]]:
+        """
+        Load benchmark data (documents + questions) for a given domain.
+        
+        Looks for benchmark files in data/benchmarks/<domain>/
+        
+        Args:
+            domain: The benchmark domain (e.g., "female_longevity")
+        
+        Returns:
+            Dict with "documents" and "questions" keys, or None if not found
+        """
+        import base64
+        
+        # Determine benchmark path
+        root_dir = os.getenv("AGENTIC_ROOT_DIR", "./data")
+        benchmark_dir = os.path.join(root_dir, "benchmarks", domain)
+        
+        if not os.path.exists(benchmark_dir):
+            print(f"Benchmark directory not found: {benchmark_dir}")
+            return None
+        
+        # Load documents from papers/ subdirectory
+        documents = []
+        papers_dir = os.path.join(benchmark_dir, "papers")
+        
+        if os.path.exists(papers_dir):
+            for filename in os.listdir(papers_dir):
+                file_path = os.path.join(papers_dir, filename)
+                if os.path.isfile(file_path):
+                    with open(file_path, "rb") as f:
+                        content = f.read()
+                    
+                    documents.append({
+                        "filename": filename,
+                        "content_base64": base64.b64encode(content).decode("utf-8"),
+                    })
+        
+        # Load questions from qa_pairs.json
+        questions = []
+        qa_file = os.path.join(benchmark_dir, "qa_pairs.json")
+        
+        if os.path.exists(qa_file):
+            with open(qa_file, "r") as f:
+                qa_data = json.load(f)
+                questions = qa_data.get("questions", [])
+        
+        return {
+            "documents": documents,
+            "questions": questions,
+        }
 
     async def _handle_text_message(
         self, 
