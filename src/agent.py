@@ -49,6 +49,11 @@ from .environment import RAGEnvironment
 from .messenger import Messenger
 from .models import ActionRequest, ActionResponse, ActionType, EvalRequest
 
+# Import evaluators from agentic-rag
+from agentic_rag.components.evaluators.bleu_evaluator import BLEUEvaluator
+from agentic_rag.components.evaluators.rouge_evaluator import ROUGEEvaluator
+from agentic_rag.components.evaluators.coherence_evaluator import CoherenceEvaluator
+
 
 # =============================================================================
 # GREEN AGENT CLASS
@@ -408,6 +413,7 @@ class RAGAssessorAgent:
             for i, qa in enumerate(questions):
                 question = qa.get("question", "")
                 question_id = qa.get("id", f"q{i+1}")
+                ground_truth = qa.get("ground_truth", None)
                 
                 await updater.update_status(
                     TaskState.working,
@@ -424,26 +430,46 @@ class RAGAssessorAgent:
                 
                 # Extract only relevant data (remove raw embeddings to keep response small)
                 answer_data = None
+                answer_text = ""
                 if query_result.success and query_result.data:
                     result = query_result.data.get("result", {})
                     # Keep only documents with content and scores, not raw embeddings
                     clean_docs = []
                     for doc in result.get("documents", []):
+                        doc_content = doc.get("content", "")
                         clean_docs.append({
-                            "content": doc.get("content", "")[:500],  # Truncate content
+                            "content": doc_content[:500],  # Truncate content
                             "score": doc.get("score"),
                             "file_path": doc.get("meta", {}).get("file_path"),
                         })
+                        # Use first document content as the answer
+                        if not answer_text and doc_content:
+                            answer_text = doc_content
                     answer_data = {
                         "total_documents": result.get("total_documents", 0),
                         "documents": clean_docs,
                     }
                 
+                # Run evaluation on the answer
+                evaluation_scores = {}
+                if query_result.success and answer_text:
+                    await updater.update_status(
+                        TaskState.working,
+                        new_agent_text_message(f"Evaluating answer {i+1}/{len(questions)}...")
+                    )
+                    evaluation_scores = self._evaluate_answer(
+                        question=question,
+                        answer=answer_text,
+                        ground_truth=ground_truth,
+                    )
+                
                 query_results.append({
                     "question_id": question_id,
                     "question": question,
+                    "ground_truth": ground_truth[:200] if ground_truth else None,
                     "success": query_result.success,
                     "answer": answer_data,
+                    "evaluation": evaluation_scores,
                     "error": query_result.error if not query_result.success else None,
                 })
             
@@ -451,9 +477,10 @@ class RAGAssessorAgent:
             total_time = time.time() - start_time
             
             # =========================================================
-            # STEP 5: Compile results
+            # STEP 5: Compile results and aggregate scores
             # =========================================================
             successful_queries = sum(1 for r in query_results if r["success"])
+            aggregated_scores = self._aggregate_scores(query_results)
             
             assessment_results = {
                 "agent_name": agent_name,
@@ -467,14 +494,20 @@ class RAGAssessorAgent:
                 "indexing_time_seconds": round(indexing_time, 2),
                 "query_time_seconds": round(total_query_time, 2),
                 "total_time_seconds": round(total_time, 2),
+                "evaluation_scores": aggregated_scores,
                 "query_results": query_results,
             }
             
+            # Build score summary string
+            score_summary = f"{successful_queries}/{len(questions)} queries"
+            if aggregated_scores.get("avg_rouge_l"):
+                score_summary += f", ROUGE-L: {aggregated_scores['avg_rouge_l']:.3f}"
+            if aggregated_scores.get("avg_bleu"):
+                score_summary += f", BLEU: {aggregated_scores['avg_bleu']:.3f}"
+            
             await updater.update_status(
                 TaskState.working,
-                new_agent_text_message(
-                    f"Assessment complete: {successful_queries}/{len(questions)} queries successful"
-                )
+                new_agent_text_message(f"Assessment complete: {score_summary}")
             )
             
             # Return results as artifact
@@ -490,6 +523,10 @@ class RAGAssessorAgent:
                             "time_used": round(total_time, 2),
                             "max_score": len(questions),
                             "questions_answered": successful_queries,
+                            # Add evaluation scores to results for leaderboard
+                            "avg_rouge_l": aggregated_scores.get("avg_rouge_l", 0),
+                            "avg_bleu": aggregated_scores.get("avg_bleu", 0),
+                            "avg_coherence": aggregated_scores.get("avg_coherence", 0),
                         }],
                         "details": assessment_results,
                     }))
@@ -557,6 +594,106 @@ class RAGAssessorAgent:
             "documents": documents,
             "questions": questions,
         }
+
+    def _evaluate_answer(
+        self,
+        question: str,
+        answer: str,
+        ground_truth: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Evaluate an answer using multiple metrics.
+        
+        Runs:
+        - BLEU (requires ground truth) - lexical overlap
+        - ROUGE (requires ground truth) - recall-oriented overlap
+        - Coherence (no ground truth needed) - semantic coherence
+        
+        Args:
+            question: The original question
+            answer: The generated/retrieved answer
+            ground_truth: Optional expected answer for comparison
+        
+        Returns:
+            Dict with evaluation scores
+        """
+        scores = {}
+        
+        try:
+            # Initialize evaluators
+            bleu_evaluator = BLEUEvaluator(max_n=4, smoothing=True)
+            rouge_evaluator = ROUGEEvaluator(rouge_type="rougeL", use_stemmer=True)
+            coherence_evaluator = CoherenceEvaluator()
+            
+            # Run BLEU evaluation (requires ground truth)
+            if ground_truth:
+                bleu_result = bleu_evaluator.run(
+                    query=question,
+                    replies=[answer],
+                    ground_truth_answer=ground_truth,
+                )
+                bleu_metrics = bleu_result.get("eval_data", {}).get("eval_metrics", {})
+                if "bleu_4" in bleu_metrics:
+                    scores["bleu"] = bleu_metrics["bleu_4"]["score"]
+            
+            # Run ROUGE evaluation (requires ground truth)
+            if ground_truth:
+                rouge_result = rouge_evaluator.run(
+                    query=question,
+                    replies=[answer],
+                    ground_truth_answer=ground_truth,
+                )
+                rouge_metrics = rouge_result.get("eval_data", {}).get("eval_metrics", {})
+                # ROUGE key is lowercase "rougel" and uses "score" field
+                if "rougel" in rouge_metrics:
+                    scores["rouge_l"] = rouge_metrics["rougel"]["score"]
+            
+            # Run Coherence evaluation (no ground truth needed)
+            coherence_result = coherence_evaluator.run(
+                query=question,
+                replies=[answer],
+            )
+            coherence_metrics = coherence_result.get("eval_data", {}).get("eval_metrics", {})
+            if "coherence" in coherence_metrics:
+                scores["coherence"] = coherence_metrics["coherence"]["score"]
+            
+        except Exception as e:
+            print(f"Error during evaluation: {e}")
+            scores["evaluation_error"] = str(e)
+        
+        return scores
+
+    def _aggregate_scores(self, query_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Aggregate evaluation scores across all queries.
+        
+        Args:
+            query_results: List of query results with evaluation scores
+        
+        Returns:
+            Dict with aggregated scores (averages)
+        """
+        # Collect all scores by metric
+        metric_scores: Dict[str, List[float]] = {
+            "bleu": [],
+            "rouge_l": [],
+            "coherence": [],
+        }
+        
+        for result in query_results:
+            eval_scores = result.get("evaluation", {})
+            for metric, value in eval_scores.items():
+                if metric in metric_scores and isinstance(value, (int, float)):
+                    metric_scores[metric].append(value)
+        
+        # Calculate averages
+        aggregated = {}
+        for metric, values in metric_scores.items():
+            if values:
+                aggregated[f"avg_{metric}"] = round(sum(values) / len(values), 4)
+                aggregated[f"{metric}_count"] = len(values)
+        
+        return aggregated
 
     async def _handle_text_message(
         self, 

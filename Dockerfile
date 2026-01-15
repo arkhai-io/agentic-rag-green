@@ -1,18 +1,25 @@
-FROM ghcr.io/astral-sh/uv:python3.13-bookworm
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm
 
 RUN adduser agent
 USER agent
 WORKDIR /home/agent
 
-COPY pyproject.toml uv.lock README.md ./
-COPY src src
-COPY data data
+# Copy project files
+COPY --chown=agent:agent pyproject.toml README.md ./
 
-RUN \
-    --mount=type=cache,target=/home/agent/.cache/uv,uid=1000 \
-    uv sync --locked
+# Copy agentic-rag submodule (local dependency)
+COPY --chown=agent:agent agentic-rag agentic-rag
 
-ENTRYPOINT ["uv", "run", "src/server.py"]
-CMD ["--host", "0.0.0.0"]
+# Copy source code
+COPY --chown=agent:agent src src
+
+# Copy benchmark data
+COPY --chown=agent:agent data data
+
+# Install dependencies
+RUN uv sync --no-dev
+
+# Server entrypoint
+ENTRYPOINT ["uv", "run", "python", "-m", "src.server"]
+CMD ["--host", "0.0.0.0", "--port", "9009"]
 EXPOSE 9009
-
