@@ -47,7 +47,7 @@ from pydantic import ValidationError
 
 from .environment import RAGEnvironment
 from .messenger import Messenger
-from .models import ActionRequest, ActionResponse, ActionType, EvalRequest
+from .models import ActionRequest, ActionResponse, ActionType, EvalRequest, RegistrationStatus
 
 # Import evaluators from agentic-rag
 from agentic_rag.components.evaluators.bleu_evaluator import BLEUEvaluator
@@ -118,11 +118,8 @@ class RAGAssessorAgent:
     
     # Required config keys for assessment (empty - we get config from purple agent)
     required_config_keys: list[str] = [
-        # These can be provided in config OR fetched from purple agent:
-        # "agent_name",           # Purple agent's registered name
-        # "project_name",         # Purple agent's project name
-        "indexing_pipeline",    # Purple agent's indexing pipeline name
-        "retrieval_pipeline",   # Purple agent's retrieval pipeline name
+        # Config is fetched from purple agent - none required from scenario.toml
+        # Purple agent must provide: agent_name, project_name, indexing_pipeline, retrieval_pipeline
     ]
 
     def __init__(self):
@@ -374,7 +371,7 @@ class RAGAssessorAgent:
             # Try to register agent (will fail gracefully if already exists)
             setup_needed = False
             reg_result = await self.environment.register_agent(agent_name)
-            if reg_result.success:
+            if reg_result.status in (RegistrationStatus.SUCCESS, RegistrationStatus.ALREADY_EXISTS):
                 setup_needed = True
             
             if setup_needed:
@@ -383,13 +380,19 @@ class RAGAssessorAgent:
                     new_agent_text_message(f"Setting up purple agent '{agent_name}'...")
                 )
                 
-                # Create project
+                # Create project (allow if already exists)
                 proj_result = await self.environment.create_project(agent_name, project_name)
                 if not proj_result.success:
-                    await updater.reject(
-                        new_agent_text_message(f"Failed to create project: {proj_result.error}")
-                    )
-                    return
+                    if "already exists" in str(proj_result.error).lower():
+                        await updater.update_status(
+                            TaskState.working,
+                            new_agent_text_message(f"Project '{project_name}' already exists, reusing...")
+                        )
+                    else:
+                        await updater.reject(
+                            new_agent_text_message(f"Failed to create project: {proj_result.error}")
+                        )
+                        return
                 
                 # Execute setup actions from purple agent if provided
                 if 'setup_actions' in locals() and setup_actions:
@@ -530,11 +533,22 @@ class RAGAssessorAgent:
                     # Keep only documents with content and scores, not raw embeddings
                     clean_docs = []
                     for doc in result.get("documents", []):
-                        doc_content = doc.get("content", "")
+                        # Handle both Haystack Document objects and dicts
+                        if hasattr(doc, 'content'):
+                            # Haystack Document object
+                            doc_content = doc.content or ""
+                            doc_score = getattr(doc, 'score', None)
+                            doc_meta = getattr(doc, 'meta', {}) or {}
+                        else:
+                            # Dict format
+                            doc_content = doc.get("content", "")
+                            doc_score = doc.get("score")
+                            doc_meta = doc.get("meta", {})
+                        
                         clean_docs.append({
                             "content": doc_content[:500],  # Truncate content
-                            "score": doc.get("score"),
-                            "file_path": doc.get("meta", {}).get("file_path"),
+                            "score": doc_score,
+                            "file_path": doc_meta.get("file_path") if isinstance(doc_meta, dict) else None,
                         })
                         # Use first document content as the answer
                         if not answer_text and doc_content:
@@ -682,20 +696,44 @@ class RAGAssessorAgent:
                         "content_base64": base64.b64encode(content).decode("utf-8"),
                     })
         
-        # Load questions from any .json file in benchmark dir (or qa_pairs.json specifically)
+        # Load questions from any .json file in benchmark dir
+        # Try grounded_queries.json first, then qa_pairs.json, then any .json
         questions = []
-        qa_file = os.path.join(benchmark_dir, "qa_pairs.json")
+        qa_file = None
         
-        # First try qa_pairs.json, then any .json file
-        if not os.path.exists(qa_file):
-            json_files = [f for f in os.listdir(benchmark_dir) if f.endswith('.json')]
+        for candidate in ["grounded_queries.json", "qa_pairs.json"]:
+            path = os.path.join(benchmark_dir, candidate)
+            if os.path.exists(path) and os.path.getsize(path) > 20:  # Skip empty files
+                qa_file = path
+                break
+        
+        # Fall back to any .json file
+        if not qa_file:
+            json_files = [f for f in os.listdir(benchmark_dir) 
+                         if f.endswith('.json') and os.path.getsize(os.path.join(benchmark_dir, f)) > 20]
             if json_files:
                 qa_file = os.path.join(benchmark_dir, json_files[0])
         
-        if os.path.exists(qa_file):
+        if qa_file:
             with open(qa_file, "r") as f:
                 qa_data = json.load(f)
-                questions = qa_data.get("questions", [])
+                
+                # Handle both formats:
+                # 1. {"questions": [...]} with id/question/ground_truth
+                # 2. Direct array [{question, gold_answer}, ...]
+                if isinstance(qa_data, list):
+                    # Direct array format - convert to standard format
+                    questions = [
+                        {
+                            "id": f"q{i+1}",
+                            "question": item.get("question", ""),
+                            "ground_truth": item.get("gold_answer", item.get("ground_truth", "")),
+                        }
+                        for i, item in enumerate(qa_data)
+                    ]
+                else:
+                    # Dict format with questions key
+                    questions = qa_data.get("questions", [])
         
         return {
             "documents": documents,
