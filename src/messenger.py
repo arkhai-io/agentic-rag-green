@@ -28,7 +28,7 @@ from a2a.types import DataPart, Message, Part, Role, TextPart
 # CONSTANTS
 # =============================================================================
 
-DEFAULT_TIMEOUT = 300  # 5 minutes timeout for agent responses
+DEFAULT_TIMEOUT = 7200  # 2 hours timeout for large assessments (100+ papers)
 
 
 # =============================================================================

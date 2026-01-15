@@ -238,7 +238,7 @@ def main():
 
     # Create and run server
     server = create_server(args.host, args.port, args.card_url)
-    uvicorn.run(server.build(), host=args.host, port=args.port)
+    uvicorn.run(server.build(), host=args.host, port=args.port, timeout_keep_alive=300)
 
 
 if __name__ == "__main__":
