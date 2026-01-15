@@ -1,3 +1,4 @@
 [submodule "agentic-rag"]
 	path = agentic-rag
-	url = https://github.com/arkhai-io/agentic-rag
+	url = git@github-berkeley:arkhai-io/agentic-rag.git
+	branch = fix/server-integ
