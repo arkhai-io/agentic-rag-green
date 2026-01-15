@@ -116,10 +116,11 @@ class RAGAssessorAgent:
     # Required roles when running a full assessment (from AgentBeats)
     required_roles: list[str] = ["rag_agent"]
     
-    # Required config keys for assessment
+    # Required config keys for assessment (empty - we get config from purple agent)
     required_config_keys: list[str] = [
-        "agent_name",           # Purple agent's registered name
-        "project_name",         # Purple agent's project name
+        # These can be provided in config OR fetched from purple agent:
+        # "agent_name",           # Purple agent's registered name
+        # "project_name",         # Purple agent's project name
         "indexing_pipeline",    # Purple agent's indexing pipeline name
         "retrieval_pipeline",   # Purple agent's retrieval pipeline name
     ]
@@ -294,15 +295,70 @@ class RAGAssessorAgent:
                 )
                 return
             
-            # Extract config values
+            # Get purple agent URL
+            purple_agent_url = str(eval_request.participants.get("rag_agent", ""))
             config = eval_request.config
-            agent_name = config["agent_name"]
-            project_name = config["project_name"]
-            indexing_pipeline = config["indexing_pipeline"]
-            retrieval_pipeline = config["retrieval_pipeline"]
-            
-            # Optional config
             benchmark_domain = config.get("domain", "female_longevity")
+            
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message(f"Contacting purple agent at {purple_agent_url}...")
+            )
+            
+            # =========================================================
+            # STEP 0: Get config from purple agent (or use provided config)
+            # =========================================================
+            agent_name = config.get("agent_name")
+            project_name = config.get("project_name")
+            indexing_pipeline = config.get("indexing_pipeline")
+            retrieval_pipeline = config.get("retrieval_pipeline")
+            
+            # If config not provided, ask purple agent for its setup
+            if not all([agent_name, project_name, indexing_pipeline, retrieval_pipeline]):
+                await updater.update_status(
+                    TaskState.working,
+                    new_agent_text_message("Requesting config from purple agent...")
+                )
+                
+                try:
+                    # Ask purple agent for its config
+                    purple_response = await self.messenger.talk_to_agent(
+                        message=json.dumps({"action": "get_config", "params": {}}),
+                        url=purple_agent_url,
+                        new_conversation=True,
+                        timeout=60,
+                    )
+                    
+                    # Parse purple agent's response
+                    purple_config = json.loads(purple_response)
+                    agent_name = agent_name or purple_config.get("agent_name")
+                    project_name = project_name or purple_config.get("project_name")
+                    indexing_pipeline = indexing_pipeline or purple_config.get("indexing_pipeline")
+                    retrieval_pipeline = retrieval_pipeline or purple_config.get("retrieval_pipeline")
+                    
+                    # Get pipeline components if provided
+                    setup_actions = purple_config.get("setup_actions", [])
+                    
+                    await updater.update_status(
+                        TaskState.working,
+                        new_agent_text_message(f"Purple agent config: {agent_name}/{project_name}")
+                    )
+                    
+                except Exception as e:
+                    await updater.reject(
+                        new_agent_text_message(f"Failed to get config from purple agent: {e}")
+                    )
+                    return
+            
+            # Validate we have all required config
+            if not all([agent_name, project_name, indexing_pipeline, retrieval_pipeline]):
+                await updater.reject(
+                    new_agent_text_message(
+                        f"Missing config. Need: agent_name={agent_name}, project_name={project_name}, "
+                        f"indexing_pipeline={indexing_pipeline}, retrieval_pipeline={retrieval_pipeline}"
+                    )
+                )
+                return
             
             await updater.update_status(
                 TaskState.working,
@@ -311,6 +367,44 @@ class RAGAssessorAgent:
             
             # Initialize environment
             await self.environment.initialize()
+            
+            # =========================================================
+            # STEP 0.5: Setup purple agent's pipelines if needed
+            # =========================================================
+            # Try to register agent (will fail gracefully if already exists)
+            setup_needed = False
+            reg_result = await self.environment.register_agent(agent_name)
+            if reg_result.success:
+                setup_needed = True
+            
+            if setup_needed:
+                await updater.update_status(
+                    TaskState.working,
+                    new_agent_text_message(f"Setting up purple agent '{agent_name}'...")
+                )
+                
+                # Create project
+                proj_result = await self.environment.create_project(agent_name, project_name)
+                if not proj_result.success:
+                    await updater.reject(
+                        new_agent_text_message(f"Failed to create project: {proj_result.error}")
+                    )
+                    return
+                
+                # Execute setup actions from purple agent if provided
+                if 'setup_actions' in locals() and setup_actions:
+                    for action in setup_actions:
+                        if action.get("action") == "create_pipeline":
+                            params = action.get("params", {})
+                            pipe_result = await self.environment.create_pipeline(
+                                agent_name=agent_name,
+                                **params
+                            )
+                            if not pipe_result.success:
+                                await updater.update_status(
+                                    TaskState.working,
+                                    new_agent_text_message(f"Pipeline setup warning: {pipe_result.error}")
+                                )
             
             # =========================================================
             # STEP 1: Load benchmark data (documents + questions)
