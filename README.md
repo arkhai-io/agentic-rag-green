@@ -65,8 +65,9 @@ agentic-rag-green/
 ### Prerequisites
 
 - Python 3.12+
-- Poetry
+- [uv](https://docs.astral.sh/uv/) package manager
 - Neo4j database (local or Aura)
+- ChromaDB (for vector storage)
 - OpenRouter API key (for LLM-based generation and evaluation)
 
 ### Setup
@@ -80,23 +81,23 @@ cd agentic-rag-green
 git submodule update --init --recursive
 
 # Install dependencies
-poetry install
+uv sync
 
 # Configure environment
-cp .env.example .env
-# Edit .env with your credentials:
-#   NEO4J_URI=neo4j+s://your-instance.neo4j.io
-#   NEO4J_USERNAME=neo4j
-#   NEO4J_PASSWORD=your-password
-#   OPENROUTER_API_KEY=your-api-key
+cp sample.env .env
+# Edit .env with your credentials
 ```
 
 ## Usage
 
-### Starting the Server
+### Starting the Server (Local)
 
 ```bash
-poetry run python -m src.server --host 0.0.0.0 --port 9009
+# Start ChromaDB first
+docker run -d -p 8000:8000 --name chromadb chromadb/chroma
+
+# Run the server
+CHROMA_HOST=localhost CHROMA_PORT=8000 uv run python -m src.server --host 0.0.0.0 --port 9009
 ```
 
 ### Agent Card
@@ -196,17 +197,44 @@ curl -X POST http://localhost:9009/ \
 
 ## Docker Deployment
 
-```bash
-# Build image
-docker build -t ghcr.io/arkhai/agentic-rag-green:latest .
+### Build
 
-# Run container
-docker run -p 9009:9009 \
-  -e NEO4J_URI=neo4j+s://your-instance.neo4j.io \
-  -e NEO4J_USERNAME=neo4j \
-  -e NEO4J_PASSWORD=your-password \
-  -e OPENROUTER_API_KEY=your-api-key \
-  ghcr.io/arkhai/agentic-rag-green:latest
+```bash
+docker build -t agentic-rag-green:latest .
+```
+
+### Run with Docker Network (Recommended)
+
+```bash
+# Create network
+docker network create rag-network
+
+# Start ChromaDB
+docker run -d --name chromadb --network rag-network -p 8000:8000 chromadb/chroma
+
+# Run green agent
+docker run -d --name green-agent \
+  --network rag-network \
+  --add-host=host.docker.internal:host-gateway \
+  -p 9009:9009 \
+  -e CHROMA_HOST=chromadb \
+  -e CHROMA_PORT=8000 \
+  --env-file .env \
+  agentic-rag-green:latest
+```
+
+### Environment Variables
+
+Create a `.env` file (see `sample.env`):
+
+```bash
+# Required
+NEO4J_URI=bolt://host.docker.internal:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=your_password
+
+# Optional (for coherence evaluation)
+OPENROUTER_API_KEY=your_openrouter_key
 ```
 
 ## AgentBeats Integration
@@ -232,14 +260,14 @@ For assessment configuration, the agent expects:
 
 ```bash
 # Run tests
-poetry run pytest
+uv run pytest
 
 # Format code
-poetry run black src/
-poetry run isort src/
+uv run black src/
+uv run isort src/
 
 # Type checking
-poetry run mypy src/
+uv run mypy src/
 ```
 
 ## License
