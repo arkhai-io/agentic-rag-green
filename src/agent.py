@@ -570,20 +570,33 @@ class RAGAssessorAgent:
         papers_dir = os.path.join(benchmark_dir, "papers")
         
         if os.path.exists(papers_dir):
-            for filename in os.listdir(papers_dir):
-                file_path = os.path.join(papers_dir, filename)
-                if os.path.isfile(file_path):
+            # Recursively find all PDF files in papers directory (supports subfolders)
+            for root, dirs, files in os.walk(papers_dir):
+                for filename in files:
+                    # Only process PDF files
+                    if not filename.lower().endswith('.pdf'):
+                        continue
+                    
+                    file_path = os.path.join(root, filename)
+                    rel_path = os.path.relpath(file_path, papers_dir)
+                    
                     with open(file_path, "rb") as f:
                         content = f.read()
                     
                     documents.append({
-                        "filename": filename,
+                        "filename": rel_path,
                         "content_base64": base64.b64encode(content).decode("utf-8"),
                     })
         
-        # Load questions from qa_pairs.json
+        # Load questions from any .json file in benchmark dir (or qa_pairs.json specifically)
         questions = []
         qa_file = os.path.join(benchmark_dir, "qa_pairs.json")
+        
+        # First try qa_pairs.json, then any .json file
+        if not os.path.exists(qa_file):
+            json_files = [f for f in os.listdir(benchmark_dir) if f.endswith('.json')]
+            if json_files:
+                qa_file = os.path.join(benchmark_dir, json_files[0])
         
         if os.path.exists(qa_file):
             with open(qa_file, "r") as f:

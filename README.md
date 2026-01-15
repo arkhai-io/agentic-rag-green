@@ -212,13 +212,15 @@ docker network create rag-network
 # Start ChromaDB
 docker run -d --name chromadb --network rag-network -p 8000:8000 chromadb/chroma
 
-# Run green agent
+# Run green agent with benchmark data
 docker run -d --name green-agent \
   --network rag-network \
   --add-host=host.docker.internal:host-gateway \
   -p 9009:9009 \
   -e CHROMA_HOST=chromadb \
   -e CHROMA_PORT=8000 \
+  -e PAPERS_URL=https://github.com/arkhai-io/agentic-rag-green/releases/download/v1.0.0/papers.zip \
+  -e QA_PAIRS_URL=https://github.com/arkhai-io/agentic-rag-green/releases/download/v1.0.0/grounded_queries.zip \
   --env-file .env \
   agentic-rag-green:latest
 ```
@@ -235,13 +237,44 @@ NEO4J_PASSWORD=your_password
 
 # Optional (for coherence evaluation)
 OPENROUTER_API_KEY=your_openrouter_key
+
+# Optional: Download benchmark data at startup
+PAPERS_URL=https://github.com/arkhai-io/agentic-rag-green/releases/download/v1.0.0/papers.zip
+QA_PAIRS_URL=https://github.com/arkhai-io/agentic-rag-green/releases/download/v1.0.0/grounded_queries.zip
+```
+
+### Benchmark Data
+
+Benchmark data (PDF papers + QA pairs) can be:
+1. **Downloaded at startup** via `PAPERS_URL` and `QA_PAIRS_URL` environment variables
+2. **Baked into the image** by placing files in `data/benchmarks/<domain>/`
+
+Expected structure:
+```
+data/benchmarks/female_longevity/
+├── papers/          # PDF files (supports subfolders)
+│   ├── paper1.pdf
+│   └── topic/
+│       └── paper2.pdf
+└── qa_pairs.json    # or any .json file with questions
+```
+
+QA JSON format:
+```json
+{
+  "questions": [
+    {"id": "q1", "question": "...", "ground_truth": "..."}
+  ]
+}
 ```
 
 ## AgentBeats Integration
 
-This Green Agent is compatible with the AgentBeats platform for running standardized assessments. Register the agent on AgentBeats and configure a leaderboard to track Purple Agent performance on RAG benchmarks.
+This Green Agent is compatible with the AgentBeats platform for running standardized assessments.
 
-For assessment configuration, the agent expects:
+### Assessment Configuration
+
+The agent expects an `EvalRequest` with:
 
 ```json
 {
@@ -249,12 +282,50 @@ For assessment configuration, the agent expects:
     "rag_agent": "http://purple-agent-url:port"
   },
   "config": {
-    "domain": "machine_learning",
-    "num_tasks": 10,
-    "metrics": ["rouge", "bleu", "answer_quality"]
+    "agent_name": "my_agent",
+    "project_name": "my_project",
+    "indexing_pipeline": "pdf_indexer",
+    "retrieval_pipeline": "retriever",
+    "domain": "female_longevity"
   }
 }
 ```
+
+### Leaderboard Setup
+
+1. Fork the [leaderboard template](https://github.com/RDI-Foundation/agentbeats-leaderboard-template)
+2. Configure `scenario.toml`:
+
+```toml
+[green_agent]
+agentbeats_id = "your-green-agent-id"
+env = { 
+  NEO4J_URI = "${NEO4J_URI}",
+  CHROMA_HOST = "chromadb",
+  PAPERS_URL = "https://github.com/.../papers.zip"
+}
+
+[[participants]]
+agentbeats_id = ""  # Purple agents fill this
+name = "rag_agent"
+env = {}
+
+[config]
+domain = "female_longevity"
+agent_name = ""           # Purple fills
+project_name = ""         # Purple fills
+indexing_pipeline = ""    # Purple fills
+retrieval_pipeline = ""   # Purple fills
+```
+
+### Evaluation Metrics
+
+The assessment returns:
+- **pass_rate**: Percentage of successful queries
+- **time_used**: Total assessment time (seconds)
+- **avg_bleu**: Average BLEU score
+- **avg_rouge_l**: Average ROUGE-L score  
+- **avg_coherence**: Average coherence score
 
 ## Development
 
