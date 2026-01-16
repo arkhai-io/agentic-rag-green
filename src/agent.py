@@ -518,9 +518,9 @@ class RAGAssessorAgent:
                 )
                 
                 # Run query through purple agent's retrieval pipeline
-                query_result = await self.environment.query(
-                    agent_name=agent_name,
-                    project_name=project_name,
+                    query_result = await self.environment.query(
+                        agent_name=agent_name,
+                        project_name=project_name,
                     pipeline_name=retrieval_pipeline,
                     query=question,
                 )

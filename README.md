@@ -283,7 +283,7 @@ The agent expects an `EvalRequest` with:
   },
   "config": {
     "agent_name": "my_agent",
-    "project_name": "my_project",
+    "project_name": "my_project", 
     "indexing_pipeline": "pdf_indexer",
     "retrieval_pipeline": "retriever",
     "domain": "female_longevity"
